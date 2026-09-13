@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#143d31">
+<meta name="description" content="Ditt klubbhus for vennskapelig konkurranse. Velg spillere, finn banen og spill matchplay med Golf League.">
+<title>Golf League · Klubbhuset</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Hopp til innhold</a>
+<aside class="sidebar">
+<a class="brand" href="#oversikt" aria-label="Golf League, oversikt"><span class="brand-mark" aria-hidden="true">⚑</span><span>Golf League<span class="brand-sub">DITT DIGITALE KLUBBHUS</span></span></a>
+<p class="nav-label">KLUBBHUSET</p>
+<nav aria-label="Hovedmeny">
+<a href="#oversikt" class="nav-item active" data-view="oversikt"><span aria-hidden="true">▦</span>Oversikt</a>
+<a href="#spillere" class="nav-item" data-view="spillere"><span aria-hidden="true">♧</span>Spillere</a>
+<a href="#matchplay" class="nav-item" data-view="matchplay"><span aria-hidden="true">⚑</span>Matchplay</a>
+<a href="#statistikk" class="nav-item" data-view="statistikk"><span aria-hidden="true">▥</span>Statistikk</a>
+</nav>
+<div class="sidebar-note"><span class="mini-label">SPILLET ER BEDRE SAMMEN</span><p>Litt konkurranse.<br>Mye golfglede.</p><span class="sidebar-note-bottom">Én mot én. Hull for hull. ↗</span></div>
+<div class="sidebar-footer"><span class="small-logo">GL</span><div>Golf League<small>For deg og golfvennene dine</small></div></div>
+</aside>
+<div class="app-shell">
+<header class="topbar"><span>Klubbhuset <span class="breadcrumb">/ <span id="breadcrumb">Oversikt</span></span></span><span class="topbar-tag"><i></i> MATCHPLAY</span></header>
+<main id="main" tabindex="-1">
+<div class="page-heading"><div><p class="eyebrow">GOLF LEAGUE</p><h1 id="pageTitle">Velkommen til klubbhuset.</h1><p id="pageDescription">Gode runder starter med godt selskap.</p></div><a class="button primary" href="#matchplay" id="primaryAction"><span aria-hidden="true">＋</span> Ny match</a></div>
+<div id="appNotice" class="notice" role="status" hidden></div>
+<section id="dashboardSection" aria-label="Oversikt">
+<div class="stats-grid">
+<article class="stat-card"><span class="stat-label">Spillere i klubbhuset <span aria-hidden="true">♧</span></span><strong id="playerCount">—</strong><span class="stat-caption">Klare for neste runde</span></article>
+<article class="stat-card"><span class="stat-label">Gjennomsnittlig HCP <span aria-hidden="true">↗</span></span><strong id="averageHcp">—</strong><span class="stat-caption" id="hcpCaption">Basert på registrert handicap</span></article>
+<article class="stat-card"><span class="stat-label">Tilgjengelige baner <span aria-hidden="true">⚑</span></span><strong id="courseCount">—</strong><span class="stat-caption" id="clubCount">Henter baner …</span></article>
+</div>
+<div class="dashboard-strip"><div><span class="eyebrow">NESTE RUNDE</span><h2 id="roundHeadline">Hvem utfordrer du i dag?</h2><p id="roundDescription">Velg to spillere og ta konkurransen ut på banen.</p></div><a class="button light" href="#matchplay" id="roundAction">Sett opp en match <span aria-hidden="true">↗</span></a></div>
+</section>
+<div class="setup-grid" id="setupGrid">
+<section class="card" id="playersSection">
+<div class="section-heading"><div><p class="eyebrow">01 / SPILLERE</p><h2>Hvem skal spille?</h2></div><span class="pill" id="selectionCount">0 av 2 valgt</span></div>
+<p class="section-description">Velg to spillere til matchen, eller legg til en ny golfvenn.</p>
+<form id="playerForm" class="player-input">
+<div class="field"><label for="playerName">Spillernavn</label><input type="text" id="playerName" placeholder="Navn på spiller" required maxlength="80" autocomplete="name"></div>
+<div class="field hcp-field"><label for="playerHcp">Handicap</label><input type="number" id="playerHcp" placeholder="Valgfritt" step="0.1" min="-10" max="54"></div>
+<button type="submit" id="addPlayerButton" class="secondary">Legg til <span aria-hidden="true">＋</span></button>
+</form>
+<p id="playerFeedback" class="form-feedback" role="status"></p>
+<div class="list-heading"><span>SPILLER</span><span>HANDICAP</span></div>
+<div id="players"><p class="empty-state">Henter spillere …</p></div>
+<div class="selection-footer"><span id="selectionHint">Velg to spillere for å starte.</span><span aria-hidden="true">↗</span></div>
+</section>
+<div id="courseColumn">
+<section class="card" id="courseSection">
+<div class="section-heading"><div><p class="eyebrow">02 / BANEN</p><h2>Finn din neste fairway.</h2></div><span class="outline-icon" aria-hidden="true">⚑</span></div>
+<p class="section-description">Velg klubb, bane og tee for slagfordeling på hvert hull.</p>
+<label for="clubInput">Golfklubb</label><div class="search-field"><span aria-hidden="true">⌕</span><input type="search" id="clubInput" placeholder="Søk etter golfklubb …" oninput="onClubInput()" autocomplete="off" aria-controls="clubResults"></div>
+<p id="courseFeedback" class="form-feedback" role="status">Henter baner …</p>
+<div id="clubResults" class="search-results" style="display:none;"></div>
+<div class="tile-group" id="courseNameTiles" style="display:none;" aria-label="Velg bane"></div>
+<div class="tile-group" id="teeTiles" style="display:none;" aria-label="Velg tee"></div>
+<div class="course-confirm" id="courseConfirm" style="display:none;">✓ <span id="courseConfirmText"></span></div>
+<div class="course-summary" id="courseSummary"><span>SPILLEFORM<strong>Matchplay</strong></span><span>HULL<strong id="setupHoles">18</strong></span><span>SPILLERE<strong>2</strong></span></div>
+<button id="createMatchButton" onclick="createMatch()" class="primary full-width" disabled>Start matchplay <span aria-hidden="true">↗</span></button>
+<p class="small muted centered">Uten bane spilles 18 hull uten handicapslag.</p>
+</section>
+<aside class="tip-card"><span class="outline-icon" aria-hidden="true">↗</span><div><h3>Hvert hull er en ny mulighet.</h3><p>Laveste nettoscore vinner hullet. Matchen er avgjort når ledelsen er større enn antall hull igjen.</p></div></aside>
+</div>
+</div>
+<section id="statisticsSection" class="card" hidden>
+<div class="section-heading"><div><p class="eyebrow">SPILLEROVERSIKT</p><h2>Handicap i klubbhuset</h2></div><span class="pill">Lavest HCP først</span></div>
+<p class="section-description">Registrerte handicap for spillerne dine. Dette er ikke en ligatabell.</p>
+<div id="handicapTable" class="table-scroll"></div>
+<div class="data-note">Kampresultater vises i scorekortet under hver match. Det finnes foreløpig ingen lagret kamphistorikk eller ligapoeng.</div>
+</section>
+<!-- Match -->
+<section class="card" id="matchSection" style="display:none;">
+
+<div class="section-heading"><div><p class="eyebrow">PÅ BANEN</p><h2 id="matchTitle">Matchplay</h2><p id="matchCourseLabel" class="muted"></p></div><span id="matchStateLabel" class="pill">Kamp pågår</span></div>
+<div class="round-progress"><div id="roundProgressBar"></div></div><p id="roundProgressText" class="muted small"></p>
+
+<div class="strokes-banner" id="strokesBanner" style="display:none;">
+<div class="stroke-chip" id="strokeChip1">
+<span class="stroke-chip-name" id="strokeChipName1"></span>
+<span class="stroke-chip-value" id="strokeChipValue1">0</span>
+<span class="stroke-chip-label">slag</span>
+</div>
+<div class="stroke-chip" id="strokeChip2">
+<span class="stroke-chip-name" id="strokeChipName2"></span>
+<span class="stroke-chip-value" id="strokeChipValue2">0</span>
+<span class="stroke-chip-label">slag</span>
+</div>
+</div>
+
+<div id="holeContent">
+
+<h3 id="holeNumber">Hull 1</h3>
+
+<div class="scoreboard" id="scoreboardArea">
+
+<div class="player-score">
+<div class="score-header">
+<span class="player-name" id="namePlayer1"></span>
+<span class="stroke-badge" id="strokeBadge1"></span>
+<strong id="statusPlayer1">AS</strong>
+</div>
+<div class="score-buttons" id="scoreButtons1"></div>
+</div>
+
+<div class="player-score">
+<div class="score-header">
+<span class="player-name" id="namePlayer2"></span>
+<span class="stroke-badge" id="strokeBadge2"></span>
+<strong id="statusPlayer2">AS</strong>
+</div>
+<div class="score-buttons" id="scoreButtons2"></div>
+</div>
+
+</div>
+
+<div class="match-result-panel" id="matchResultPanel" style="display:none;">
+<div class="match-result-trophy">🏆</div>
+<div class="match-result-text" id="matchResultText"></div>
+<div class="match-result-sub" id="matchResultSub"></div>
+</div>
+
+</div>
+
+
+<!-- Resultater -->
+<div class="results">
+
+<div class="section-heading"><h3>Scorekort</h3><span class="muted small">Bruttoscore per hull</span></div>
+
+<div id="holeResults" class="table-scroll"></div>
+
+</div>
+
+<button class="btn-small" onclick="backToPlayers()">Avslutt / ny match</button>
+
+</section>
+
+
+<footer class="page-footer"><span>GOLF LEAGUE</span><span>Godt selskap. Gode runder.</span></footer>
+</main></div>
+<dialog class="celebration-overlay" id="celebrationOverlay" aria-labelledby="celebrationWinner">
+<div class="celebration-box"><span class="eyebrow">SISTE PUTT ER SATT</span><div class="trophy" aria-hidden="true">🏆</div><h2 id="celebrationWinner"></h2><p id="celebrationScore"></p><button class="primary" onclick="closeCelebration()">Se scorekortet</button></div>
+</dialog>
+<noscript><p class="notice">Slå på JavaScript for å laste spillere og spille matchplay.</p></noscript>
+<script type="module" src="script.js"></script>
+</body></html>
