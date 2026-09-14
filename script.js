@@ -30,6 +30,8 @@ let renderTimer = null;
 let holeLocked = false;
 let playersLoaded = false;
 let coursesLoaded = false;
+let playersLoadFailed = false;
+let coursesLoadFailed = false;
 let currentView = 'oversikt';
 let celebrationReturnFocus = null;
 
@@ -71,14 +73,21 @@ async function addPlayer() {
 
 
 async function loadPlayers() {
+    playersLoadFailed = false;
+    setFeedback('playerFeedback', 'Henter spillere …');
     try {
         const { data, error } = await supabase.from('players').select('*').order('id', { ascending: true });
         if (error) throw error;
+        const selectedIds = selectedPlayers.map(index => players[index]?.id);
         players = data || [];
+        selectedPlayers = players.flatMap((player, index) => selectedIds.includes(player.id) ? [index] : []);
         playersLoaded = true;
+        setFeedback('playerFeedback', '');
         updatePlayers();
     } catch (error) {
         console.error(error);
+        playersLoadFailed = true;
+        updateDashboard();
         document.getElementById('players').innerHTML = '<p class="empty-state">Spillerne kunne ikke lastes. <button class="secondary" onclick="retryPlayers()">Prøv igjen</button></p>';
         setFeedback('playerFeedback', 'Sjekk forbindelsen og prøv igjen.', true);
     }
@@ -90,6 +99,8 @@ async function loadPlayers() {
 // -------------------------
 
 async function loadCourses() {
+    coursesLoadFailed = false;
+    setFeedback('courseFeedback', 'Henter baner …');
     try {
         const { data, error } = await supabase.from('courses').select('*')
             .order('club_name', { ascending: true }).order('course_name', { ascending: true }).order('tee_name', { ascending: true });
@@ -101,6 +112,8 @@ async function loadCourses() {
         if (document.getElementById('clubInput').value && !selectedCourse) onClubInput();
     } catch (error) {
         console.error(error);
+        coursesLoadFailed = true;
+        updateDashboard();
         const feedback = document.getElementById('courseFeedback');
         feedback.classList.add('error');
         feedback.innerHTML = 'Banene kunne ikke lastes. <button class="secondary" onclick="retryCourses()">Prøv igjen</button>';
@@ -350,9 +363,17 @@ function updatePlayers() {
         const name = document.createElement('span');
         name.className = 'player-info';
         name.textContent = player.name;
+        const detail = document.createElement('span');
+        detail.className = 'player-detail';
+        const side = match.player1?.id === player.id ? 1 : match.player2?.id === player.id ? 2 : 0;
+        detail.textContent = side
+            ? `${match.results.length} hull spilt · ${side === 1 ? match.score1 : match.score2} hull vunnet i denne kampen`
+            : 'Kamphistorikk ikke registrert';
+        name.appendChild(detail);
         const hcp = document.createElement('span');
         hcp.className = 'player-hcp';
         hcp.textContent = formatHcp(player.hcp);
+        hcp.setAttribute('aria-label', `Handicap ${formatHcp(player.hcp)}`);
         const check = document.createElement('span');
         check.className = 'selection-mark';
         check.textContent = '✓';
@@ -562,6 +583,7 @@ function createScoreButtons() {
         buttons1.innerHTML += `
             <button
                 class="score-button"
+                aria-pressed="false" aria-label="${score} slag"
                 onclick="selectScore(1, ${score}, this)">
                 ${score}
             </button>
@@ -570,6 +592,7 @@ function createScoreButtons() {
         buttons2.innerHTML += `
             <button
                 class="score-button"
+                aria-pressed="false" aria-label="${score} slag"
                 onclick="selectScore(2, ${score}, this)">
                 ${score}
             </button>
@@ -584,14 +607,15 @@ function selectScore(player, score, button) {
     if (player === 1) {
         selectedScore1 = score;
         document.querySelectorAll("#scoreButtons1 .score-button")
-            .forEach(btn => btn.classList.remove("selected"));
+            .forEach(btn => { btn.classList.remove("selected"); btn.setAttribute("aria-pressed", "false"); });
     } else {
         selectedScore2 = score;
         document.querySelectorAll("#scoreButtons2 .score-button")
-            .forEach(btn => btn.classList.remove("selected"));
+            .forEach(btn => { btn.classList.remove("selected"); btn.setAttribute("aria-pressed", "false"); });
     }
 
     button.classList.add("selected");
+    button.setAttribute("aria-pressed", "true");
 
     if (selectedScore1 !== null && selectedScore2 !== null) {
         holeLocked = true;
@@ -697,6 +721,9 @@ function updateMatch() {
         document.getElementById('roundProgressBar').style.width = `${Math.min(100, match.results.length / match.holes * 100)}%`;
         document.getElementById('roundProgressText').textContent = `${match.results.length} av ${match.holes} hull spilt`;
         document.getElementById('matchStateLabel').textContent = match.active ? 'Kamp pågår' : 'Ferdigspilt';
+        document.getElementById('scoreHelp').hidden = !match.active;
+        document.getElementById('scoreButtons1').setAttribute('aria-label', `Score for ${match.player1.name}`);
+        document.getElementById('scoreButtons2').setAttribute('aria-label', `Score for ${match.player2.name}`);
     };
     if (holeContent.dataset.rendered === 'true') {
         holeLocked = true;
@@ -749,7 +776,6 @@ function updateResults() {
 
 function finishMatch(holesRemaining) {
     match.active = false;
-    updateDashboard();
 
     const lead = Math.abs(match.score1 - match.score2);
     let resultMain;
@@ -770,6 +796,7 @@ function finishMatch(holesRemaining) {
     const panel = document.getElementById("matchResultPanel");
     document.getElementById("matchResultText").textContent = resultMain;
     document.getElementById("matchResultSub").textContent = resultSub;
+    updateDashboard();
     panel.style.display = "block";
 
     document.getElementById("celebrationWinner").textContent =
@@ -848,6 +875,7 @@ function backToPlayers() {
     clearMatchState();
     showView('matchplay');
     updateDashboard();
+    document.getElementById('main').scrollIntoView({ behavior: 'instant', block: 'start' });
 }
 
 
@@ -867,7 +895,14 @@ document.getElementById('playerForm').addEventListener('submit', event => {
 });
 window.retryPlayers = loadPlayers;
 window.retryCourses = loadCourses;
-window.addEventListener('hashchange', () => showView(location.hash.slice(1)));
+window.addEventListener('hashchange', () => {
+    showView(location.hash.slice(1));
+    document.getElementById('main').scrollIntoView({ behavior: 'instant', block: 'start' });
+    document.getElementById('main').focus({ preventScroll: true });
+});
+document.getElementById('primaryAction').addEventListener('click', () => {
+    if (!match.active && match.player1) backToPlayers();
+});
 showView(location.hash.slice(1));
 loadPlayers();
 loadCourses();
@@ -911,7 +946,11 @@ function renderTable(container, headings, rows) {
     const body = table.createTBody();
     rows.forEach(values => {
         const row = body.insertRow();
-        values.forEach(value => { row.insertCell().textContent = value; });
+        values.forEach((value, index) => {
+            const cell = row.insertCell();
+            cell.textContent = value;
+            cell.setAttribute('data-label', headings[index]);
+        });
     });
     container.replaceChildren(table);
 }
@@ -924,26 +963,72 @@ function updateDashboard() {
     document.getElementById('courseCount').textContent = coursesLoaded
         ? new Set(courses.map(c => JSON.stringify([c.club_name, c.course_name]))).size : '—';
     document.getElementById('clubCount').textContent = coursesLoaded
-        ? `Fordelt på ${new Set(courses.map(c => c.club_name)).size} golfklubber` : 'Henter baner …';
-    document.getElementById('roundHeadline').textContent = match.active
+        ? `${new Set(courses.map(c => c.club_name)).size} golfklubber` : coursesLoadFailed ? 'Kunne ikke lastes' : 'Henter baner …';
+    const hasMatch = !!match.player1;
+    document.getElementById('roundEyebrow').textContent = match.active ? 'KAMP PÅGÅR' : hasMatch ? 'SISTE KAMP' : 'NESTE RUNDE';
+    document.getElementById('roundHeadline').textContent = hasMatch
         ? `${match.player1.name} mot ${match.player2.name}` : 'Hvem utfordrer du i dag?';
     document.getElementById('roundDescription').textContent = match.active
-        ? `Hull ${match.currentHole} av ${match.holes} · Kampen din er klar til å fortsette.`
-        : 'Velg to spillere og ta konkurransen ut på banen.';
-    document.getElementById('roundAction').textContent = match.active ? 'Fortsett matchen ↗' : 'Sett opp en match ↗';
-    document.getElementById('primaryAction').textContent = match.active ? 'Fortsett match ↗' : '＋ Ny match';
+        ? `Hull ${match.currentHole} av ${match.holes}. Klar til å fortsette?`
+        : hasMatch ? document.getElementById('matchResultText').textContent : 'To spillere. Én match. Hvert hull teller.';
+    document.getElementById('roundAction').textContent = match.active ? 'Fortsett matchen →' : hasMatch ? 'Se scorekortet →' : 'Start en match →';
+    document.getElementById('primaryAction').textContent = match.active ? 'Fortsett match →' : '＋ Ny match';
+    renderRecentMatch();
     const stats = document.getElementById('handicapTable');
-    if (!playersLoaded) { stats.innerHTML = '<p class="empty-state">Laster spilleroversikten …</p>'; return; }
-    if (!players.length) { stats.innerHTML = '<p class="empty-state">Legg til spillere for å se handicapoversikten.</p>'; return; }
+    const preview = document.getElementById('standingsPreview');
+    const chart = document.getElementById('hcpChart');
+    if (!playersLoaded) {
+        const message = playersLoadFailed ? 'Spillerne kunne ikke lastes. Prøv igjen under Spillere.' : 'Laster spilleroversikten …';
+        stats.replaceChildren(makeText('p', 'empty-state', message));
+        preview.replaceChildren(makeText('p', 'empty-state', message));
+        chart.hidden = true;
+        return;
+    }
+    if (!players.length) {
+        stats.innerHTML = '<p class="empty-state">Legg til spillere for å se handicapoversikten.</p>';
+        preview.innerHTML = '<p class="empty-state">Ingen spillere ennå. Legg til din første golfvenn.</p>';
+        chart.hidden = true;
+        return;
+    }
     const sorted = [...players].sort((a,b) => (a.hcp ?? Infinity) - (b.hcp ?? Infinity));
-    renderTable(stats, ['Spiller', 'Handicap', 'Status'], sorted.map(p => [p.name, formatHcp(p.hcp), p.hcp == null ? 'Handicap mangler' : 'Registrert']));
+    renderTable(stats, ['Spiller', 'Handicap', 'Status'], sorted.map(p => [p.name, formatHcp(p.hcp), p.hcp == null ? 'Handicap mangler' : 'Registrert handicap']));
+    preview.replaceChildren();
+    sorted.slice(0, 3).forEach(player => {
+        const row = document.createElement('div');
+        row.className = 'preview-player';
+        row.append(makeText('span', 'avatar', initials(player.name)), makeText('span', 'player-info', player.name), makeText('span', 'player-hcp', formatHcp(player.hcp)));
+        preview.appendChild(row);
+    });
+    chart.hidden = !withHcp.length;
+    chart.replaceChildren();
+    const buckets = [
+        ['Under 10', withHcp.filter(p => Number(p.hcp) < 10).length],
+        ['10–19,9', withHcp.filter(p => Number(p.hcp) >= 10 && Number(p.hcp) < 20).length],
+        ['20–29,9', withHcp.filter(p => Number(p.hcp) >= 20 && Number(p.hcp) < 30).length],
+        ['30 og over', withHcp.filter(p => Number(p.hcp) >= 30).length]
+    ];
+    const max = Math.max(1, ...buckets.map(([, count]) => count));
+    buckets.forEach(([label, count]) => {
+        const row = document.createElement('div');
+        row.className = 'chart-row';
+        row.setAttribute('aria-label', `Handicap ${label}: ${count} spillere`);
+        const track = document.createElement('span');
+        track.className = 'chart-track';
+        track.setAttribute('aria-hidden', 'true');
+        const fill = document.createElement('span');
+        fill.className = 'chart-fill';
+        fill.style.width = `${count / max * 100}%`;
+        track.appendChild(fill);
+        row.append(makeText('span', '', label), track, makeText('strong', '', count));
+        chart.appendChild(row);
+    });
 }
 function showView(view) {
     const views = {
-        oversikt: ['Oversikt', 'Velkommen til klubbhuset.', 'Gode runder starter med godt selskap.'],
-        spillere: ['Spillere', 'Golf er bedre sammen.', 'Spillerne dine, samlet på ett sted.'],
-        matchplay: ['Matchplay', 'Én mot én. Hull for hull.', 'Velg spillere, finn banen og la matchen begynne.'],
-        statistikk: ['Statistikk', 'Bli kjent med feltet.', 'En oversikt over spillerne og deres registrerte handicap.']
+        oversikt: ['Klubbhuset', 'Klar for en runde?', 'Din liga. Dine golfvenner. Neste utfordring.'],
+        spillere: ['Feltet', 'Dine golfvenner.', 'Legg til spillere og finn din neste motstander.'],
+        matchplay: ['Matchplay', match.active ? 'Matchen er i gang.' : match.player1 ? 'Siste putt er satt.' : 'Klar for en utfordring?', match.active ? 'Ett hull av gangen. Hvert slag teller.' : 'Én mot én. Hull for hull.'],
+        statistikk: ['Innsikt', 'Feltet i tall.', 'Spillerstatistikk, enkelt og oversiktlig.']
     };
     currentView = views[view] ? view : 'oversikt';
     const [label, title, description] = views[currentView];
@@ -960,9 +1045,16 @@ function showView(view) {
     document.getElementById('dashboardSection').hidden = !['oversikt', 'statistikk'].includes(currentView);
     document.querySelector('.dashboard-strip').hidden = currentView === 'statistikk';
     document.getElementById('statisticsSection').hidden = currentView !== 'statistikk';
+    document.getElementById('homeContent').hidden = currentView !== 'oversikt';
+    document.getElementById('quickActions').hidden = currentView !== 'oversikt';
+    document.getElementById('playersTitle').textContent = currentView === 'spillere' ? 'Spillerne i ligaen' : 'Velg spillere';
+    document.getElementById('playersDescription').textContent = currentView === 'spillere'
+        ? 'Legg til golfvenner, eller velg to spillere til neste match.' : 'Trykk på to spillere for å sette opp matchen.';
+    document.getElementById('playersMatchLink').hidden = currentView !== 'spillere';
+    if (currentView === 'spillere' && playersLoaded) updatePlayers();
     const hasMatch = !!match.player1;
     const showMatch = currentView === 'matchplay' && hasMatch;
-    const showSetup = currentView === 'spillere' || ((currentView === 'oversikt' || currentView === 'matchplay') && !hasMatch);
+    const showSetup = currentView === 'spillere' || (currentView === 'matchplay' && !hasMatch);
     document.getElementById('setupGrid').hidden = !showSetup;
     document.getElementById('setupGrid').classList.toggle('players-only', currentView === 'spillere');
     document.getElementById('playersSection').style.display = '';
@@ -971,4 +1063,37 @@ function showView(view) {
     document.getElementById('matchSection').style.display = showMatch ? 'block' : 'none';
     // replaceState keeps create/restore on the same view without firing another render.
     if (location.hash !== `#${currentView}`) history.replaceState(null, '', `#${currentView}`);
+}
+
+function makeText(tag, className, text) {
+    const element = document.createElement(tag);
+    element.className = className;
+    element.textContent = text;
+    return element;
+}
+function renderRecentMatch() {
+    const container = document.getElementById('recentMatch');
+    if (!match.player1) {
+        container.innerHTML = '<div class="empty-state"><strong>Din neste match starter her.</strong><p>Utfordre en golfvenn. Vi holder orden på hullene.</p><a class="button primary" href="#matchplay">Sett opp match</a></div>';
+        return;
+    }
+    const card = document.createElement('a');
+    card.href = '#matchplay';
+    card.className = 'match-preview';
+    card.setAttribute('aria-label', `${match.player1.name} mot ${match.player2.name}, ${match.active ? 'fortsett match' : 'se scorekort'}`);
+    const head = document.createElement('div');
+    head.className = 'match-preview-head';
+    head.append(makeText('span', 'pill', match.active ? 'Pågår' : 'Ferdigspilt'), makeText('span', '', `${match.results.length}/${match.holes} hull`));
+    const versus = document.createElement('div');
+    versus.className = 'match-versus';
+    [match.player1, match.player2].forEach((player, index) => {
+        if (index) versus.appendChild(makeText('span', '', 'VS'));
+        const side = document.createElement('div');
+        side.className = 'match-contender';
+        side.append(makeText('span', 'avatar', initials(player.name)), makeText('span', '', player.name));
+        versus.appendChild(side);
+    });
+    const course = match.course ? `${match.course.course_name} · Tee ${match.course.tee_name}` : 'Matchplay · Uten valgt bane';
+    card.append(head, versus, makeText('span', 'match-preview-footer', course + ' →'));
+    container.replaceChildren(card);
 }
