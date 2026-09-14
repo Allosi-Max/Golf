@@ -1,287 +1,114 @@
-// Runs the actual application script with a minimal DOM and isolated Supabase/storage doubles.
-// No network requests or production database writes. Run: node --test GOLF/tests/flows.test.cjs
-const { test } = require('node:test');
-const assert = require('node:assert/strict');
-const vm = require('node:vm');
-const fs = require('node:fs');
-const path = require('node:path');
-const root = path.resolve(__dirname, '..');
-const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-const script = fs.readFileSync(path.join(root, 'script.js'), 'utf8').replace(/^import .*;\n/, '');
-
-class Element {
-    constructor(tag = 'div') {
-        this.tagName = tag; this.children = []; this.style = {}; this.dataset = {}; this.attributes = {};
-        this.value = ''; this.hidden = false; this.disabled = false; this.listeners = {}; this.className = ''; this._text = '';
-        this.classList = {
-            contains: name => this.className.split(/\s+/).includes(name),
-            add: (...names) => { this.className = [...new Set([...this.className.split(/\s+/), ...names])].join(' ').trim(); },
-            remove: (...names) => { this.className = this.className.split(/\s+/).filter(n => !names.includes(n)).join(' '); },
-            toggle: (name, force) => { const on = force ?? !this.classList.contains(name); this.classList[on ? 'add' : 'remove'](name); return on; }
-        };
-    }
-    get textContent() { return this._text + this.children.map(c => c.textContent).join(''); }
-    set textContent(value) { this._text = String(value); this.children = []; this._html = ''; }
-    set innerHTML(value) { this._html = value; this._text = ''; this.children = []; parse(value, this); }
-    get innerHTML() { return this._html || ''; }
-    append(...children) { children.forEach(c => this.appendChild(c)); }
-    appendChild(child) { child.parent = this; this.children.push(child); return child; }
-    replaceChildren(...children) { this._text = ''; this.children = []; this.append(...children); }
-    remove() { if (this.parent) this.parent.children = this.parent.children.filter(c => c !== this); }
-    setAttribute(key, value) { this.attributes[key] = String(value); if (key === 'class') this.className = value; if (key === 'id') this.id = value; if (key.startsWith('data-')) this.dataset[key.slice(5)] = value; }
-    removeAttribute(key) { delete this.attributes[key]; }
-    addEventListener(event, fn) { this.listeners[event] = fn; }
-    querySelectorAll(selector) {
-        const parts = selector.split(' ');
-        const match = (el, part) => part[0] === '#' ? el.id === part.slice(1) : part[0] === '.' ? el.classList.contains(part.slice(1)) : part === '[data-view]' ? !!el.dataset.view : el.tagName === part;
-        const nodes = [];
-        const walk = node => node.children.forEach(child => { nodes.push(child); walk(child); }); walk(this);
-        return nodes.filter(node => {
-            if (!match(node, parts.at(-1))) return false;
-            let ancestor = node.parent;
-            for (let i = parts.length - 2; i >= 0; i--) {
-                while (ancestor && !match(ancestor, parts[i])) ancestor = ancestor.parent;
-                if (!ancestor) return false;
-                ancestor = ancestor.parent;
-            }
-            return true;
-        });
-    }
-    querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
-    insertRow() { return this.appendChild(new Element('tr')); }
-    insertCell() { return this.appendChild(new Element('td')); }
-    createTHead() { return this.appendChild(new Element('thead')); }
-    createTBody() { return this.appendChild(new Element('tbody')); }
-    scrollIntoView() {}
-    focus() {}
-    showModal() { this.open = true; }
-    close() { this.open = false; }
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const {Element,parse}=require('./dom.cjs');
+const uuid=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+const profiles=[{id:uuid(1),username:'ada',display_name:'Ada Berg',handicap:10},{id:uuid(2),username:'jon',display_name:'Jon Moen',handicap:19}];
+const fixtureMatch={id:uuid(100),player1_id:uuid(1),player2_id:uuid(2),player1_name:'Ada Berg',player2_name:'Jon Moen',handicap1:10,handicap2:19,total_holes:18,current_hole:1,holes_won1:0,holes_won2:0,status:'active',winner_id:null,final_result:null,created_at:'2026-09-14T10:00:00Z',finished_at:null,course_snapshot:null};
+const holes=()=>Array.from({length:18},(_,i)=>({match_id:uuid(100),hole:i+1,par:null,stroke_index:null,strokes1:0,strokes2:0,score1:null,score2:null,winner_id:null}));
+const flush=()=>new Promise(r=>setTimeout(r,5));
+async function setup(options={}){
+ const {createApp}=await import('../js/app.js');
+ const doc=new Element('document');parse(fs.readFileSync(path.join(__dirname,'../index.html'),'utf8'),doc);
+ doc.getElementById=id=>doc.querySelector('#'+id);doc.createElement=tag=>new Element(tag);doc.body=doc.querySelector('body');
+ const calls=[],storage=new Map();let authCallback;let session=options.signedOut?null:{user:{id:uuid(1)}};
+ const db={profiles:structuredClone(options.profiles||profiles),friendships:[{user_low:uuid(1),user_high:uuid(2),created_at:'2026-01-01'}],friend_requests:[],courses:[],matches:[],match_holes:holes()};
+ const client={auth:{
+  getSession:async()=>({data:{session},error:null}),
+  onAuthStateChange:fn=>{authCallback=fn;return{data:{subscription:{unsubscribe(){}}}};},
+  signInWithPassword:async args=>{calls.push(['login',args]);return{data:{session:{user:{id:uuid(1)}}},error:options.loginError?{message:'Invalid login credentials'}:null};},
+  signUp:async args=>{calls.push(['signup',args]);return{data:{session:null},error:null};},
+  signInWithOAuth:async args=>{calls.push(['google',args]);return{data:{},error:null};},
+  signOut:async()=>{calls.push(['logout']);session=null;return{data:null,error:null};}
+ },from(table){
+  calls.push(['from',table]);let filters=[],single=false,write=null,range=null;
+  const q={select(){return q;},order(){return q;},range(a,b){range=[a,b];return q;},eq(k,v){filters.push(r=>r[k]===v);return q;},in(k,v){filters.push(r=>v.includes(r[k]));return q;},single(){single=true;return q;},maybeSingle(){single=true;return q;},
+   insert(row){write=['insert',row];return q;},update(row){write=['update',row];return q;},
+   async then(resolve,reject){try{
+    if(options.defer && table==='profiles'&&!write)await options.defer;
+    let rows=db[table].filter(r=>filters.every(f=>f(r)));
+    if(write){calls.push([table,...write]);if(write[0]==='insert'){db[table].push({...write[1]});rows=[db[table].at(-1)];}else rows.forEach(r=>Object.assign(r,write[1]));}
+    if(range)rows=rows.slice(range[0],range[1]+1);
+    return resolve({data:structuredClone(single?(rows[0]||null):rows),error:null});
+   }catch(e){return reject(e);}}
+  };return q;
+ },rpc:async(name,args)=>{
+  calls.push(['rpc',name,args]);
+  if(options.rpcError)return{data:null,error:{message:options.rpcError}};
+  if(name==='start_match'){const m={...fixtureMatch,id:args.p_match_id};db.matches=[m];db.match_holes=holes().map(h=>({...h,match_id:m.id}));return{data:m,error:null};}
+  if(name==='submit_match_hole'){
+   const m=db.matches.find(m=>m.id===args.p_match_id),h=db.match_holes.find(h=>h.hole===args.p_hole);
+   h.score1=args.p_score1;h.score2=args.p_score2;h.winner_id=m.player1_id;
+   Object.assign(m,options.finished?{status:'finished',winner_id:m.player1_id,final_result:'10&8',finished_at:'2026-09-14T12:00:00Z',current_hole:11,holes_won1:10}:{current_hole:m.current_hole+1,holes_won1:m.holes_won1+1});
+   return{data:structuredClone(m),error:null};
+  }
+  if(name==='send_friend_request'){db.friend_requests.push({id:uuid(50),sender_id:uuid(1),recipient_id:uuid(2),status:'pending'});return{data:db.friend_requests.at(-1),error:null};}
+  if(name==='respond_friend_request'){db.friend_requests.find(r=>r.id===args.p_request_id).status=args.p_accept?'accepted':'declined';return{data:{},error:null};}
+  return{data:{},error:null};
+ }};
+ const win={location:{hash:'#home',origin:'https://golf.example',pathname:'/index.html'},history:{replaceState(a,b,hash){win.location.hash=hash;}},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},crypto:{randomUUID:()=>uuid(100)},setTimeout,addEventListener(){},confirm:()=>true};
+ const app=createApp(client,{document:doc,window:win});const ready=app.init();if(!options.defer)await ready;
+ return{app,doc,win,db,calls,storage,ready,options,el:id=>doc.getElementById(id),async submit(id){doc.getElementById(id).listeners.submit({preventDefault(){}});await flush();},async click(id){await doc.getElementById(id).listeners.click();await flush();},emit:async session=>{authCallback('SIGNED_IN',session);await flush();}};
 }
-function parse(markup, root) {
-    const stack = [root];
-    const voids = new Set(['meta','link','input','br','hr','img']);
-    for (const token of markup.matchAll(/<!--[\s\S]*?-->|<\/?([\w-]+)\b([^>]*)>|([^<]+)/g)) {
-        if (!token[1]) { if (token[3]) stack.at(-1)._text += token[3]; continue; }
-        const tag = token[1];
-        if (token[0].startsWith('</')) { if (stack.length > 1) stack.pop(); continue; }
-        const el = new Element(tag);
-        for (const attr of token[2].matchAll(/([\w-]+)(?:="([^"]*)")?/g)) el.setAttribute(attr[1], attr[2] ?? '');
-        el.hidden = Object.hasOwn(el.attributes, 'hidden');
-        el.disabled = Object.hasOwn(el.attributes, 'disabled');
-        stack.at(-1).appendChild(el);
-        if (!voids.has(tag)) stack.push(el);
-    }
-}
-const fixturePlayers = [{ id: 1, name: 'Ada Berg', hcp: 10 }, { id: 2, name: 'Jon Moen', hcp: 19 }, { id: 3, name: 'Liv Sol', hcp: null }];
-const fixtureCourse = { club_name: 'Test Golfklubb', course_name: 'Skogen', tee_name: '48', holes: Array.from({length:9}, (_,i) => ({hole:i+1, par:4, stroke_index:i*2+1})) };
-async function app(options = {}) {
-    const document = new Element('document'); parse(html, document);
-    document.getElementById = id => document.querySelector('#' + id);
-    document.createElement = tag => new Element(tag);
-    const storage = new Map(options.storage || []), timers = new Map(), writes = [];
-    let serial = 0, clock = 0;
-    const data = { players: structuredClone(fixturePlayers), courses: [structuredClone(fixtureCourse)] };
-    const fail = options.fail || {};
-    const supabase = { from(table) {
-        let insert;
-        const query = {
-            select() { return query; }, order() { return query; }, single() { return query; },
-            insert(rows) { insert = rows[0]; writes.push({table, row:insert}); return query; },
-            then(resolve, reject) {
-                let response;
-                if (fail[table]) response = {error: new Error('test failure'), data:null};
-                else if (insert) { const row = {id:4,...insert}; data[table].push(row); response = {data:row,error:null}; }
-                else response = {data:structuredClone(data[table]),error:null};
-                return Promise.resolve(response).then(resolve,reject);
-            }
-        }; return query;
-    }};
-    const context = vm.createContext({ document, supabase, console:{error(){}},
-        localStorage: {getItem:key=>storage.get(key) ?? null, setItem:(key,value)=> {if(options.storageBlocked) throw Error(); storage.set(key,value);}, removeItem:key=>storage.delete(key)},
-        location: {hash:''}, history:{replaceState(_a,_b,hash){context.location.hash=hash;}},
-        alert:()=>{}, confirm:()=>options.confirm !== false,
-        setTimeout:(fn,delay)=>{const id=++serial;timers.set(id,{fn,at:clock+delay});return id;},
-        clearTimeout:id=>timers.delete(id), setInterval:()=>0, clearInterval:()=>{},
-    });
-    context.window = context; context.addEventListener = ()=>{};
-    vm.runInContext(script, context);
-    await new Promise(resolve => setImmediate(resolve));
-    const run = expression => vm.runInContext(expression, context);
-    const tick = ms => {
-        const end = clock+ms;
-        while (true) {
-            const next = [...timers].sort((a,b)=>a[1].at-b[1].at).find(([,t])=>t.at<=end);
-            if (!next) break;
-            clock = next[1].at; timers.delete(next[0]); next[1].fn();
-        }
-        clock=end;
-    };
-    return {run,tick,storage,writes,fail,document,el:id=>document.getElementById(id),
-        start(course = false) {run(`selectPlayer(0); selectPlayer(1); ${course ? "selectTee(courses[0], document.createElement('button'));" : ''} createMatch();`);tick(200);},
-        hole(a,b) {run(`selectScore(1,${a},document.createElement('button'));selectScore(2,${b},document.createElement('button'));`);tick(550);}
-    };
-}
-test('every static JavaScript element reference exists exactly once in the HTML', () => {
-    const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
-    assert.equal(new Set(ids).size, ids.length);
-    for (const [,id] of script.matchAll(/getElementById\(['"]([^'"]+)['"]\)/g)) assert.ok(ids.includes(id), id);
+test('signed-out gate makes no profile/data requests and guards private routes',async()=>{
+ const a=await setup({signedOut:true});assert.equal(a.el('authView').hidden,false);assert.equal(a.calls.filter(c=>c[0]==='from').length,0);
+ a.win.location.hash='#friends';a.app.route();assert.equal(a.el('authView').hidden,false);assert.equal(a.el('friendsView').hidden,true);
 });
-test('dashboard uses real loaded values; handicap statistics and navigation work', async () => {
-    const a=await app();
-    assert.equal(a.el('playerCount').textContent,'3');
-    assert.equal(a.el('averageHcp').textContent,'14,5');
-    assert.equal(a.el('courseCount').textContent,'1');
-    a.run("showView('statistikk')");
-    assert.equal(a.el('statisticsSection').hidden,false);
-    assert.equal(a.el('setupGrid').hidden,true);
-    assert.match(a.el('handicapTable').textContent,/Ada Berg/);
-    a.run("showView('spillere')");
-    assert.equal(a.el('courseColumn').hidden,true);
+test('email login uses Supabase and clears password after success',async()=>{
+ const a=await setup({signedOut:true});a.el('authEmail').value='ada@example.test';a.el('authPassword').value='test-only-password';await a.submit('authForm');
+ assert.equal(a.calls.find(c=>c[0]==='login')[1].email,'ada@example.test');assert.equal(a.el('authPassword').value,'');assert.equal(a.app.state.phase,'ready');
 });
-test('registration keeps Supabase insert contract and renders names as text', async () => {
-    const a=await app();
-    a.el('playerName').value='<img src=x onerror=alert(1)>';
-    a.el('playerHcp').value='0';
-    await a.run('addPlayer()');
-    assert.equal(a.writes.length,1);
-    assert.equal(a.writes[0].table,'players');
-    assert.equal(a.writes[0].row.hcp,0);
-    assert.equal(a.el('players').querySelectorAll('img').length,0);
-    assert.match(a.el('players').textContent,/<img/);
-    assert.equal(a.el('playerCount').textContent,'4');
+test('failed login shows an error and signup handles email confirmation',async()=>{
+ const a=await setup({signedOut:true,loginError:true});a.el('authEmail').value='ada@example.test';a.el('authPassword').value='test-only-password';await a.submit('authForm');
+ assert.match(a.el('authFeedback').textContent,/Feil e-post/);await a.click('authModeButton');await a.submit('authForm');
+ assert.match(a.el('authFeedback').textContent,/bekreft kontoen/);assert.equal(a.app.state.phase,'auth');
 });
-test('failed reads/inserts have retryable feedback and never invent data',async()=>{
-    const a=await app({fail:{players:true,courses:true}});
-    assert.match(a.el('players').textContent,/Prøv igjen/);
-    assert.match(a.el('courseFeedback').textContent,/Prøv igjen/);
-    a.el('playerName').value='Test'; await a.run('addPlayer()');
-    assert.match(a.el('playerFeedback').textContent,/Kunne ikke lagre/);
-    assert.equal(a.el('addPlayerButton').disabled,false);
-    a.fail.players=false; await a.run('loadPlayers()');
-    assert.equal(a.el('playerCount').textContent,'3');
+test('Google uses Supabase OAuth and correct return URL',async()=>{
+ const a=await setup({signedOut:true});await a.click('googleButton');
+ assert.deepEqual(a.calls.find(c=>c[0]==='google')[1],{provider:'google',options:{redirectTo:'https://golf.example/index.html'}});
 });
-test('club search → course → tee preserves nine-hole handicap distribution',async()=>{
-    const a=await app();
-    a.el('clubInput').value='test';a.run('onClubInput()');
-    assert.equal(a.el('clubResults').children.length,1);
-    a.el('clubResults').children[0].onclick();
-    a.el('courseNameTiles').children[0].onclick();
-    a.el('teeTiles').children[0].onclick();
-    assert.equal(a.el('setupHoles').textContent,'9');
-    a.start();
-    assert.equal(a.run('match.holes'),9);
-    assert.equal(a.run('match.strokesReceiver'),2);
-    assert.equal(a.run('strokesOnHole(1)'),1);
-    a.hole(4,5);assert.equal(a.run('match.results[0].winner'),'Delt');
+test('missing profile is mandatory before friends or scoring',async()=>{
+ const a=await setup({profiles:[]});assert.equal(a.app.state.phase,'onboarding');a.win.location.hash='#friends';a.app.route();assert.equal(a.el('onboardingView').hidden,false);
+ a.el('newUsername').value='ADA';a.el('newDisplayName').value='Ada Berg';a.el('newHandicap').value='18.5';await a.submit('onboardingForm');
+ const created=a.calls.find(c=>c[0]==='profiles'&&c[1]==='insert')[2];assert.equal(created.id,uuid(1));assert.equal(created.username,'ada');assert.equal(a.app.state.phase,'ready');
 });
-test('rapid repeated score clicks submit exactly one hole',async()=>{
-    const a=await app();a.start();
-    a.run("selectScore(1,4,document.createElement('button'));selectScore(2,5,document.createElement('button'));selectScore(2,6,document.createElement('button'));selectScore(1,3,document.createElement('button'));");
-    a.tick(1000);
-    assert.equal(a.run('match.results.length'),1);
-    assert.equal(a.run('match.results[0].score2'),5);
-    assert.equal(a.run('match.currentHole'),2);
-    a.run('submitHole()');assert.equal(a.run('match.results.length'),1);
+test('profile editing only sends display name and handicap',async()=>{
+ const a=await setup();a.el('displayName').value='Ada New';a.el('handicap').value='8.5';await a.submit('profileForm');
+ assert.deepEqual(a.calls.find(c=>c[0]==='profiles'&&c[1]==='update')[2],{display_name:'Ada New',handicap:8.5});
 });
-test('active match survives refresh; expired/malformed state is discarded',async()=>{
-    const a=await app();a.start();a.hole(4,5);
-    const restored=await app({storage:[...a.storage]});
-    assert.equal(restored.run('match.currentHole'),2);
-    assert.equal(restored.el('matchSection').style.display,'block');
-    assert.match(restored.el('holeResults').textContent,/Ada Berg/);
-    const state=JSON.parse(a.storage.get('activeGolfMatch'));state.savedAt=Date.now()-7*3600000;
-    const expired=await app({storage:[['activeGolfMatch',JSON.stringify(state)]]});
-    assert.equal(expired.storage.has('activeGolfMatch'),false);
-    const malformed=await app({storage:[['activeGolfMatch','null']]});
-    assert.equal(malformed.storage.has('activeGolfMatch'),false);
+test('self search has no send button; friends can start setup with both handicaps',async()=>{
+ const a=await setup();await a.app.loadFriends();a.el('friendUsername').value='ada';await a.app.searchFriend();
+ assert.match(a.el('searchResults').textContent,/din profil/);assert.equal(a.el('searchResults').querySelectorAll('button').length,0);
+ await a.app.chooseOpponent(profiles[1]);assert.match(a.el('setupPlayers').textContent,/Ada Berg/);assert.match(a.el('setupPlayers').textContent,/19/);assert.equal(a.el('setupView').hidden,false);
 });
-test('early victory shows final result, clears save and prevents further scores',async()=>{
-    const a=await app();a.start();
-    for(let i=0;i<10;i++)a.hole(4,5);
-    assert.equal(a.run('match.active'),false);
-    assert.match(a.el('matchResultText').textContent,/10&8/);
-    assert.equal(a.el('celebrationOverlay').open,true);
-    assert.equal(a.storage.has('activeGolfMatch'),false);
-    a.hole(3,4);assert.equal(a.run('match.results.length'),10);
-    a.run('closeCelebration()');assert.equal(a.el('celebrationOverlay').open,false);
-    a.run('backToPlayers()');a.start();a.hole(5,4);
-    assert.equal(a.run('match.results.length'),1);
-    assert.equal(a.run('match.score2'),1);
+test('incoming requests expose accept/decline and send calls server RPC',async()=>{
+ const a=await setup();a.db.friendships=[];await a.app.loadFriends();a.el('friendUsername').value='jon';await a.app.searchFriend();
+ await a.el('searchResults').querySelector('button').listeners.click();assert.equal(a.calls.filter(c=>c[1]==='send_friend_request').length,1);
+ a.db.friend_requests=[{id:uuid(50),sender_id:uuid(2),recipient_id:uuid(1),status:'pending'}];await a.app.loadFriends();
+ const actions=a.el('incomingRequests').querySelectorAll('button');assert.equal(actions.length,2);await actions[0].listeners.click();assert.equal(a.calls.find(c=>c[1]==='respond_friend_request')[2].p_accept,true);
 });
-test('18 tied holes finish All Square',async()=>{
-    const a=await app();a.start();for(let i=0;i<18;i++)a.hole(4,4);
-    assert.equal(a.run('match.active'),false);
-    assert.match(a.el('matchResultText').textContent,/All Square/);
-    assert.equal(a.el('roundProgressText').textContent,'18 av 18 hull spilt');
+test('start retries keep the same ID; score retries preserve input and do not advance locally',async()=>{
+ const a=await setup({rpcError:'Failed to fetch'});await a.app.chooseOpponent(profiles[1]);await a.click('startMatchButton');await a.click('startMatchButton');
+ const calls=a.calls.filter(c=>c[1]==='start_match');assert.equal(calls[0][2].p_match_id,calls[1][2].p_match_id);
+ assert.match(a.el('setupFeedback').textContent,/forbindelsen/);a.options.rpcError=null;await a.click('startMatchButton');await flush();
+ a.options.rpcError='Failed to fetch';a.el('score1').value='3';a.el('score2').value='5';await a.submit('scoreForm');
+ assert.equal(a.app.state.match.current_hole,1);assert.equal(a.el('score1').value,'3');assert.ok(a.storage.has(`golf.accounts.${uuid(1)}.hole`));
+ a.options.rpcError=null;await a.submit('scoreForm');assert.equal(a.app.state.match.current_hole,2);assert.equal(a.storage.has(`golf.accounts.${uuid(1)}.hole`),false);
 });
-test('navigation preserves active match; canceling exit preserves state',async()=>{
-    const a=await app({confirm:false});a.start();a.hole(4,5);
-    a.run("showView('oversikt');showView('spillere');showView('matchplay');backToPlayers()");
-    assert.equal(a.run('match.active'),true);
-    assert.equal(a.run('match.currentHole'),2);
-    assert.equal(a.el('matchSection').style.display,'block');
+test('server final result renders history and statistics',async()=>{
+ const a=await setup({finished:true});a.db.matches=[structuredClone(fixtureMatch)];await a.app.loadMatch(uuid(100));a.el('score1').value='4';a.el('score2').value='5';await a.app.submitScore();
+ assert.equal(a.el('scoreForm').hidden,true);assert.match(a.el('matchResult').textContent,/10&8/);await a.app.loadMatches();
+ assert.match(a.el('profileHistory').textContent,/Seier/);assert.match(a.el('profileHistory').textContent,/Jon Moen/);assert.match(a.el('profileStats').textContent,/1Spilt/);
 });
-test('ending during pending submission cancels old callbacks and selections',async()=>{
-    const a=await app();a.start();
-    a.run("selectScore(1,4,document.createElement('button'));selectScore(2,5,document.createElement('button'));backToPlayers()");
-    a.start();a.tick(1000);assert.equal(a.run('match.results.length'),0);
+test('logout clears private state and blocks stale in-flight profile responses',async()=>{
+ const a=await setup();await a.app.loadFriends();await a.click('logoutButton');assert.equal(a.app.state.profile,null);assert.equal(a.el('friendList').textContent,'');assert.equal(a.el('appNav').hidden,true);
+ let release;const deferred=new Promise(r=>release=r);const b=await setup({defer:deferred});await b.app.handleSession(null);release();await b.ready;
+ assert.equal(b.app.state.profile,null);assert.equal(b.app.state.phase,'auth');assert.equal(b.el('homeView').hidden,true);
 });
-test('blocked local storage leaves scoring usable with a visible notice',async()=>{
-    const a=await app({storageBlocked:true});a.start();a.hole(4,5);
-    assert.equal(a.run('match.currentHole'),2);
-    assert.equal(a.el('appNotice').hidden,false);
-});
-test('mobile home is an overview, with four working navigation destinations',async()=>{
-    const a=await app();
-    assert.equal(a.el('setupGrid').hidden,true);
-    assert.equal(a.el('homeContent').hidden,false);
-    const links=a.document.querySelectorAll('[data-view]');
-    assert.equal(links.length,4);
-    for(const link of links){
-        a.run(`showView('${link.dataset.view}')`);
-        assert.equal(link.attributes['aria-current'],'page');
-        assert.equal(links.filter(l=>l.classList.contains('active')).length,1);
-    }
-});
-test('form submit prevents navigation and submits one player record',async()=>{
-    const a=await app();let prevented=false;
-    a.el('playerName').value='Mia Dal';a.el('playerHcp').value='';
-    a.el('playerForm').listeners.submit({preventDefault(){prevented=true;}});
-    await new Promise(resolve=>setImmediate(resolve));
-    assert.equal(prevented,true);assert.equal(a.writes.length,1);
-    assert.equal(a.writes[0].row.hcp,null);
-    a.el('playerName').value='Bad handicap';a.el('playerHcp').value='999';
-    await a.run('addPlayer()');assert.equal(a.writes.length,1);
-});
-test('home match card and player statistics reflect the current match only',async()=>{
-    const a=await app();a.start();a.hole(4,5);
-    a.run("showView('oversikt')");
-    assert.match(a.el('recentMatch').textContent,/Ada Berg/);
-    assert.match(a.el('recentMatch').textContent,/Pågår/);
-    a.run("showView('spillere')");
-    assert.match(a.el('players').textContent,/1 hull vunnet i denne kampen/);
-    assert.match(a.el('players').textContent,/Kamphistorikk ikke registrert/);
-});
-test('mobile result cells carry labels and handicap chart counts valid players',async()=>{
-    const a=await app();a.start();a.hole(4,5);
-    const cells=a.el('holeResults').querySelectorAll('td');
-    assert.equal(cells[0].attributes['data-label'],'Hull');
-    assert.equal(cells[1].attributes['data-label'],'Ada Berg');
-    assert.equal(cells[2].attributes['data-label'],'Jon Moen');
-    assert.equal(a.el('hcpChart').children.length,4);
-    assert.match(a.el('hcpChart').children[1].attributes['aria-label'],/2 spillere/);
-});
-test('new-match quick action after a completed round opens a fresh setup',async()=>{
-    const a=await app();a.start();for(let i=0;i<10;i++)a.hole(4,5);
-    a.run("showView('oversikt')");
-    assert.match(a.el('recentMatch').textContent,/Ferdigspilt/);
-    a.el('primaryAction').listeners.click();
-    assert.equal(a.run('match.player1'),null);
-    assert.equal(a.el('setupGrid').hidden,false);
-});
-test('a partial score cannot bleed into a new match',async()=>{
-    const a=await app();a.start();
-    a.run("selectScore(1,4,document.createElement('button'));backToPlayers()");
-    a.start();a.run("selectScore(2,5,document.createElement('button'))");a.tick(1000);
-    assert.equal(a.run('match.results.length'),0);
+test('profile validation and results distinguish draws and cancelled rounds',async()=>{
+ const {profileFields,statistics,statusFor}=await import('../js/match.js');assert.throws(()=>profileFields('ab','Ada','10'));
+ assert.throws(()=>profileFields('ada','Ada',''));assert.throws(()=>profileFields('ada','Ada','99'));assert.throws(()=>profileFields('ada','Ada','1.23'));
+ assert.equal(profileFields('ADA',' Ada ','0').username,'ada');assert.equal(statusFor({...fixtureMatch,holes_won1:3},2),'3 NED');
+ assert.deepEqual(statistics([{...fixtureMatch,status:'finished',winner_id:null},{...fixtureMatch,status:'cancelled'}],uuid(1)),{played:1,wins:0,losses:0,draws:1});
 });

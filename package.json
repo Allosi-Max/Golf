@@ -1,0 +1,12 @@
+{
+  "name": "golf-league",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "check": "node --check script.js && node --check js/api.js && node --check js/app.js && node --check js/match.js"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8"
+  }
+}
