@@ -1,91 +1,97 @@
 <!DOCTYPE html>
-<html lang="nb">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
-<meta name="description" content="Spill matchplay med golfvennene dine. Din profil, dine kamper og dine resultater.">
-<title>Golf League</title>
+<meta name="description" content="Play match play with your golf friends. Your profile, matches and results.">
+<title>Golf Match</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<a class="skip-link" href="#main">Hopp til innhold</a>
-<header class="app-header"><a class="brand" href="#home"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V3m0 1c5-4 9 4 14 0v9c-5 4-9-4-14 0"/></svg> Golf League</a><button id="logoutButton" class="text-button" hidden>Logg ut</button></header>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="app-header"><a class="brand" href="#home"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V3m0 1c5-4 9 4 14 0v9c-5 4-9-4-14 0"/></svg> Golf Match</a><button id="logoutButton" class="text-button" hidden>Log out</button></header>
 <main id="main" tabindex="-1">
 <p id="appMessage" class="notice" role="status" hidden></p>
-<section id="loadingView"><p class="empty-state">Henter kontoen din …</p></section>
+<section id="loadingView"><p class="empty-state">Loading your account …</p></section>
 <section id="authView" hidden>
-<div class="intro"><p class="eyebrow">VELKOMMEN TIL GOLF LEAGUE</p><h1 id="authTitle">Klar for en runde?</h1><p>Godt selskap. Ett hull av gangen.</p></div>
+<div class="intro"><p class="eyebrow">WELCOME TO GOLF MATCH</p><h1 id="authTitle">Ready for a round?</h1><p>Good company. One hole at a time.</p></div>
 <form id="authForm" class="form-stack">
-<label for="authEmail">E-post</label><input id="authEmail" type="email" autocomplete="email" required maxlength="254" placeholder="deg@eksempel.no">
-<label for="authPassword">Passord</label><input id="authPassword" type="password" autocomplete="current-password" required minlength="1" maxlength="128" placeholder="Passord">
-<button id="authSubmit" type="submit">Logg inn</button>
+<label for="authEmail">Email</label><input id="authEmail" type="email" autocomplete="email" required maxlength="254" placeholder="you@example.com">
+<label for="authPassword">Password</label><input id="authPassword" type="password" autocomplete="current-password" required minlength="1" maxlength="128" placeholder="Password">
+<button id="authSubmit" type="submit">Log in</button>
 </form>
 <p id="authFeedback" class="feedback" role="status"></p>
-<button id="authModeButton" class="text-button full-width">Ny her? Opprett konto</button>
-<div class="divider">eller</div><button id="googleButton" class="secondary full-width">Fortsett med Google</button>
+<button id="authModeButton" class="text-button full-width">New here? Sign up</button>
+<div class="divider">or</div><button id="googleButton" class="secondary full-width">Continue with Google</button>
 </section>
 <section id="onboardingView" hidden>
-<div class="intro"><p class="eyebrow">DIN SPILLERPROFIL</p><h1>Hvem spiller vi med?</h1><p>Velg et unikt brukernavn, navn og handicap før du starter.</p></div>
+<div class="intro"><p class="eyebrow">YOUR PLAYER PROFILE</p><h1>Who’s joining us?</h1><p>Choose a unique username, display name and Handicap Index to get started.</p></div>
 <form id="onboardingForm" class="form-stack">
-<label for="newUsername">Brukernavn</label><input id="newUsername" required minlength="3" maxlength="24" pattern="[a-zA-Z0-9_]{3,24}" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="golfvenn">
-<p class="hint">3–24 bokstaver, tall eller understrek. Kan ikke endres senere.</p>
-<label for="newDisplayName">Visningsnavn</label><input id="newDisplayName" required maxlength="80" autocomplete="name">
-<label for="newHandicap">Handicap</label><input id="newHandicap" type="number" inputmode="decimal" required min="-10" max="54" step="0.1" placeholder="18,5">
-<button type="submit">Lagre profil</button>
+<label for="newUsername">Username</label><input id="newUsername" required minlength="3" maxlength="24" pattern="[a-zA-Z0-9_]{3,24}" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="golffriend">
+<p class="hint">3–24 letters, numbers or underscores. You cannot change this later.</p>
+<label for="newDisplayName">Display name</label><input id="newDisplayName" required maxlength="80" autocomplete="name">
+<label for="newHandicap">Handicap</label><input id="newHandicap" type="number" inputmode="decimal" required min="-10" max="54" step="0.1" placeholder="18.5">
+<button type="submit">Save profile</button>
 </form><p id="onboardingFeedback" class="feedback" role="status"></p>
 </section>
 <section id="homeView" hidden>
-<div class="intro home-intro"><p class="eyebrow">DITT KLUBBHUS</p><h1 id="welcomeTitle">Golf League</h1><p>Gode runder starter med godt selskap.</p></div>
-<div class="action-stack"><a class="button" href="#friends">Ny kamp</a><a class="button secondary" href="#matches">Mine kamper</a><a class="button secondary" href="#friends">Legg til golfvenner</a><a class="button secondary" href="#profile">Min profil og statistikk</a></div>
-<p class="hint centered">Velg en venn. Spill matchplay. Ta vare på resultatet.</p>
-<details class="tournament-note"><summary>Turneringer</summary><p>Å opprette eller bli med i turneringer kommer senere. Foreløpig støttes 1 mot 1 matchplay.</p></details>
+<div class="intro home-intro"><p class="eyebrow">YOUR CLUBHOUSE</p><h1 id="welcomeTitle">Golf Match</h1><p>Great rounds start with good company.</p></div>
+<div class="action-stack"><a class="button" href="#friends">New match</a><a class="button secondary" href="#matches">My matches</a><a class="button secondary" href="#friends">Add golf friends</a><a class="button secondary" href="#profile">My profile and stats</a></div>
+<p class="hint centered">Pick a friend. Play a match. Save the result.</p>
+<details class="tournament-note"><summary>Tournaments</summary><p>Hosting and joining tournaments is coming later. For now, enjoy 1v1 match play.</p></details>
 </section>
 <section id="friendsView" hidden>
-<div class="intro"><p class="eyebrow">GOLF ER BEDRE SAMMEN</p><h1>Venner</h1><p>Finn golfvennene dine med brukernavnet deres.</p></div>
-<form id="friendSearchForm" class="form-stack"><label for="friendUsername">Søk etter brukernavn</label><div class="input-action"><input id="friendUsername" required minlength="3" maxlength="24" pattern="[a-zA-Z0-9_]{3,24}" autocapitalize="none" spellcheck="false" placeholder="Brukernavn"><button type="submit" class="secondary">Søk</button></div></form>
+<div class="intro"><p class="eyebrow">GOLF IS BETTER TOGETHER</p><h1>Friends</h1><p>Find your golf friends by username.</p></div>
+<form id="friendSearchForm" class="form-stack"><label for="friendUsername">Search by username</label><div class="input-action"><input id="friendUsername" required minlength="3" maxlength="24" pattern="[a-zA-Z0-9_]{3,24}" autocapitalize="none" spellcheck="false" placeholder="Username"><button type="submit" class="secondary">Search</button></div></form>
 <p id="friendsFeedback" class="feedback" role="status"></p><div id="searchResults"></div>
-<div class="section-heading"><h2>Dine venner</h2><button id="refreshFriends" class="text-button">Oppdater</button></div><div id="friendList" class="list"></div>
-<h2 class="section-title">Mottatte forespørsler</h2><div id="incomingRequests" class="list"></div>
-<h2 class="section-title">Sendte forespørsler</h2><div id="outgoingRequests" class="list"></div>
+<div class="section-heading"><h2>Your friends</h2><button id="refreshFriends" class="text-button">Refresh</button></div><div id="friendList" class="list"></div>
+<h2 class="section-title">Incoming requests</h2><div id="incomingRequests" class="list"></div>
+<h2 class="section-title">Sent requests</h2><div id="outgoingRequests" class="list"></div>
 </section>
 <section id="setupView" hidden>
-<div class="intro"><p class="eyebrow">1 MOT 1 · MATCHPLAY</p><h1>Sett opp kampen.</h1><p>Handicap lagres ved kampstart og brukes til slagfordeling.</p></div>
-<div id="setupPlayers" class="list"></div><a class="text-button" href="#friends">Velg en annen motstander</a>
-<h2 class="section-title">Bane og tee</h2>
-<div class="form-stack"><label for="clubInput">Golfklubb</label><input id="clubInput" type="search" placeholder="Søk golfklubb …" autocomplete="off"><div id="clubResults" class="list"></div><div id="courseNameTiles" class="tiles"></div><div id="teeTiles" class="tiles"></div></div>
-<p id="courseFeedback" class="feedback" role="status"></p><button id="retryCourses" class="text-button">Last baner på nytt</button>
-<p id="courseConfirm" class="hint">18 hull uten bane eller handicapslag.</p><button id="clearCourse" class="text-button">Spill uten bane</button>
-<button id="startMatchButton" class="full-width">Start matchplay</button><p id="setupFeedback" class="feedback" role="status"></p>
+<div class="intro"><p class="eyebrow">1V1 · MATCH PLAY</p><h1>Set up your match.</h1><p>Handicaps are saved when the match starts and used to allocate strokes.</p></div>
+<a class="text-button" href="#friends">Choose another opponent</a>
+<h2 class="section-title">Course and tee</h2>
+<div class="form-stack"><label for="clubInput">Golf club</label><input id="clubInput" type="search" placeholder="Search golf clubs …" autocomplete="off"><div id="clubResults" class="list"></div><div id="courseNameTiles" class="tiles"></div><div id="teeTiles" class="tiles"></div></div>
+<p id="courseFeedback" class="feedback" role="status"></p><button id="retryCourses" class="text-button">Reload courses</button>
+<p id="courseConfirm" class="hint">18 holes without a course or handicap strokes.</p><button id="clearCourse" class="text-button">Play without a course</button>
+<div id="teeSettings" class="form-stack" hidden>
+<p id="teeRatings" class="hint"></p>
+<p class="hint">From your selected tee. 100% allowance: Playing Handicap equals Course Handicap.</p>
+<p id="teePreviewFeedback" class="feedback" role="status"></p>
+</div>
+<div id="setupPlayers" class="list"></div>
+<button id="startMatchButton" class="full-width">Start match</button><p id="setupFeedback" class="feedback" role="status"></p>
 </section>
 <section id="matchesView" hidden>
-<div class="intro"><p class="eyebrow">HULL FOR HULL</p><h1>Mine kamper</h1><p>Fortsett en kamp, eller se tilbake på runden.</p></div>
-<div class="section-heading"><a class="button" href="#friends">Ny kamp</a><button id="refreshMatches" class="text-button">Oppdater</button></div>
+<div class="intro"><p class="eyebrow">HOLE BY HOLE</p><h1>My matches</h1><p>Continue a match or revisit a round.</p></div>
+<div class="section-heading"><a class="button" href="#friends">New match</a><button id="refreshMatches" class="text-button">Refresh</button></div>
 <p id="matchesFeedback" class="feedback" role="status"></p><div id="matchList" class="list"></div>
 </section>
 <section id="playView" hidden>
-<div class="section-heading"><a class="text-button" href="#matches">← Mine kamper</a><button id="refreshMatch" class="text-button">Oppdater</button></div>
-<h1 id="matchHeading">Matchplay</h1><p id="matchCourse" class="hint"></p>
-<progress id="roundProgress" max="18" value="0" aria-label="Hull spilt"></progress><p id="matchProgress" class="hint" role="status"></p>
+<div class="section-heading"><a class="text-button" href="#matches">← My matches</a><button id="refreshMatch" class="text-button">Refresh</button></div>
+<h1 id="matchHeading">Match play</h1><p id="matchCourse" class="hint"></p>
+<progress id="roundProgress" max="18" value="0" aria-label="Holes played"></progress><p id="matchProgress" class="hint" role="status"></p>
 <div id="matchResult" class="result-panel" hidden></div>
 <form id="scoreForm">
-<h2 id="holeTitle" class="section-title">Hull 1</h2><p class="hint">Før bruttoscore for begge spillere. Hullet lagres når du bekrefter.</p>
+<h2 id="holeTitle" class="section-title">Hole 1</h2><p class="hint">Enter both players’ scores. Confirm to save the hole.</p>
 <div id="scoringPlayers" class="score-stack"></div>
-<button id="saveHoleButton" class="full-width" type="submit">Lagre hull og fortsett</button>
+<button id="saveHoleButton" class="full-width" type="submit">Save hole and continue</button>
 </form>
 <p id="scoreFeedback" class="feedback" role="status"></p>
-<h2 class="section-title">Scorekort</h2><div id="holeResults" class="list"></div>
-<button id="cancelMatchButton" class="secondary full-width">Avslutt uten resultat</button>
+<h2 class="section-title">Scorecard</h2><div id="holeResults" class="list"></div>
+<button id="cancelMatchButton" class="secondary full-width">End without a result</button>
 </section>
 <section id="profileView" hidden>
-<div class="intro"><p class="eyebrow" id="profileUsername"></p><h1>Min profil</h1><p>Hold navnet og handicapet ditt oppdatert.</p></div>
-<form id="profileForm" class="form-stack"><label for="displayName">Visningsnavn</label><input id="displayName" required maxlength="80" autocomplete="name"><label for="handicap">Handicap</label><input id="handicap" type="number" inputmode="decimal" required min="-10" max="54" step="0.1"><button type="submit">Lagre endringer</button></form>
+<div class="intro"><p class="eyebrow" id="profileUsername"></p><h1>My profile</h1><p>Keep your name and Handicap Index up to date.</p></div>
+<form id="profileForm" class="form-stack"><label for="displayName">Display name</label><input id="displayName" required maxlength="80" autocomplete="name"><label for="handicap">Handicap</label><input id="handicap" type="number" inputmode="decimal" required min="-10" max="54" step="0.1"><button type="submit">Save changes</button></form>
 <p id="profileFeedback" class="feedback" role="status"></p>
-<h2 class="section-title">Din statistikk</h2><div id="profileStats" class="stat-grid"></div>
-<div class="section-heading"><h2>Kamphistorikk</h2><button id="refreshHistory" class="text-button">Oppdater</button></div><p id="historyFeedback" class="feedback" role="status"></p><div id="profileHistory" class="list"></div>
+<h2 class="section-title">Your stats</h2><div id="profileStats" class="stat-grid"></div>
+<div class="section-heading"><h2>Match history</h2><button id="refreshHistory" class="text-button">Refresh</button></div><p id="historyFeedback" class="feedback" role="status"></p><div id="profileHistory" class="list"></div>
 </section>
 </main>
-<nav id="appNav" class="app-nav" aria-label="Hovedmeny" hidden><a href="#home" data-route="home"><span aria-hidden="true">⌂</span>Hjem</a><a href="#matches" data-route="matches"><span aria-hidden="true">⚑</span>Kamper</a><a href="#friends" data-route="friends"><span aria-hidden="true">♧</span>Venner</a><a href="#profile" data-route="profile"><span aria-hidden="true">◯</span>Profil</a></nav>
-<noscript><p class="notice">Slå på JavaScript for å bruke Golf League.</p></noscript>
+<nav id="appNav" class="app-nav" aria-label="Main navigation" hidden><a href="#home" data-route="home"><span aria-hidden="true">⌂</span>Home</a><a href="#matches" data-route="matches"><span aria-hidden="true">⚑</span>Matches</a><a href="#friends" data-route="friends"><span aria-hidden="true">♧</span>Friends</a><a href="#profile" data-route="profile"><span aria-hidden="true">◯</span>Profile</a></nav>
+<noscript><p class="notice">Enable JavaScript to use Golf Match.</p></noscript>
 <script type="module" src="script.js"></script>
 </body></html>

@@ -1,3 +1,5 @@
+import { teeSettings, courseHandicap } from './course-handicap.js';
+import { strokeAdvantage } from './stroke-advantage.js';
 import { createApi } from './api.js';
 import { statusFor, outcome, opponentName, statistics, profileFields, errorMessage } from './match.js';
 
@@ -8,8 +10,8 @@ export function createApp(client, env = {}) {
         matches: [], match: null, holes: [], courses: [], opponent: null, course: null, signup: false };
     let epoch = 0, matchRead = 0, searchRead = 0, friendsRead = 0, authEvent = 0, subscription;
     const viewIds = ['loading', 'auth', 'onboarding', 'home', 'friends', 'setup', 'matches', 'play', 'profile'];
-    const number = n => Number(n).toLocaleString('nb-NO', { maximumFractionDigits: 1 });
-    const date = value => new Date(value).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric' });
+    const number = n => Number(n).toLocaleString('en-GB', { maximumFractionDigits: 1 });
+    const date = value => new Date(value).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
     function text(tag, value, className = '') {
         const el = doc.createElement(tag); el.textContent = value; el.className = className; return el;
     }
@@ -50,7 +52,7 @@ export function createApp(client, env = {}) {
         try {
             if (value === null) win.localStorage.removeItem(journalKey(kind));
             else win.localStorage.setItem(journalKey(kind), JSON.stringify(value));
-        } catch { feedback('appMessage', 'Nettleseren kan ikke lagre utkast. Hold siden åpen hvis en lagring må prøves igjen.'); }
+        } catch { feedback('appMessage', 'Your browser cannot save drafts. Keep this page open if you need to retry saving.'); }
     }
     function clearPrivateState() {
         Object.assign(state, { profile: null, friends: [], requests: [], people: [], matches: [], match: null,
@@ -59,7 +61,7 @@ export function createApp(client, env = {}) {
             'matchList', 'scoringPlayers', 'holeResults', 'profileHistory', 'profileStats']) $(id).replaceChildren();
         for (const input of doc.querySelectorAll('input')) input.value = '';
         for (const id of ['authFeedback', 'onboardingFeedback', 'friendsFeedback', 'profileFeedback', 'historyFeedback',
-            'setupFeedback', 'scoreFeedback', 'matchesFeedback', 'appMessage']) feedback(id);
+            'setupFeedback', 'teePreviewFeedback', 'scoreFeedback', 'matchesFeedback', 'appMessage']) feedback(id);
         matchRead++; searchRead++; friendsRead++;
     }
     function show(view) {
@@ -72,7 +74,7 @@ export function createApp(client, env = {}) {
             link.classList.toggle('active', active);
             if (active) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
         }
-        doc.title = `${({auth:'Logg inn',onboarding:'Opprett profil',home:'Hjem',friends:'Venner',matches:'Kamper',play:'Matchplay',profile:'Min profil',setup:'Ny kamp'})[view] || 'Velkommen'} · Golf League`;
+        doc.title = `${({auth:'Log in',onboarding:'Create profile',home:'Home',friends:'Friends',matches:'Matches',play:'Match play',profile:'My profile',setup:'New match'})[view] || 'Welcome'} · Golf Match`;
     }
     async function handleSession(session) {
         const user = session?.user || null;
@@ -89,8 +91,8 @@ export function createApp(client, env = {}) {
         } catch (error) {
             if (version !== epoch) return;
             state.phase = 'error';
-            empty('loadingView', 'Kontoen kunne ikke lastes.');
-            $('loadingView').appendChild(button('Prøv igjen', () => handleSession(session)));
+            empty('loadingView', 'Could not load your account.');
+            $('loadingView').appendChild(button('Try again', () => handleSession(session)));
             feedback('appMessage', errorMessage(error), true);
         }
     }
@@ -115,12 +117,12 @@ export function createApp(client, env = {}) {
             void work($('refreshHistory'), 'historyFeedback', loadMatches);
         } else if (view === 'setup' && state.opponent) { show('setup'); renderSetup(); }
         else {
-            show('home'); $('welcomeTitle').textContent = `Hei, ${state.profile.display_name}.`;
+            show('home'); $('welcomeTitle').textContent = `Hi, ${state.profile.display_name}.`;
         }
     }
     async function loadFriends() {
         const read = ++friendsRead;
-        empty('friendList', 'Henter venner …');
+        empty('friendList', 'Loading friends …');
         const [friendships, requests] = await request(Promise.all([api.friendships(), api.requests()]));
         const ids = friendships.map(f => f.user_low === state.user.id ? f.user_high : f.user_low);
         const people = await request(api.profiles([...ids, ...requests.flatMap(r => [r.sender_id, r.recipient_id])]));
@@ -136,31 +138,31 @@ export function createApp(client, env = {}) {
     }
     function renderFriends() {
         $('friendList').replaceChildren();
-        if (!state.friends.length) empty('friendList', 'Ingen venner ennå. Søk etter et brukernavn og send en forespørsel.');
+        if (!state.friends.length) empty('friendList', 'No friends yet. Search for a username and send a request.');
         state.friends.forEach(person => {
             const card = personCard(person);
-            card.appendChild(button('Start kamp', () => chooseOpponent(person), ''));
+            card.appendChild(button('Start match', () => chooseOpponent(person), ''));
             $('friendList').appendChild(card);
         });
         for (const [id, incoming] of [['incomingRequests', true], ['outgoingRequests', false]]) {
             $(id).replaceChildren();
             const pending = state.requests.filter(r => r.status === 'pending' && (incoming ? r.recipient_id : r.sender_id) === state.user.id);
-            if (!pending.length) empty(id, incoming ? 'Ingen mottatte forespørsler.' : 'Ingen ventende forespørsler.');
+            if (!pending.length) empty(id, incoming ? 'No incoming requests.' : 'No pending requests.');
             pending.forEach(req => {
                 const peer = state.people.find(p => p.id === (incoming ? req.sender_id : req.recipient_id));
                 if (!peer) return;
                 const card = personCard(peer);
                 if (incoming) {
                     const actions = doc.createElement('div'); actions.className = 'button-row';
-                    for (const [label, accept] of [['Godta', true], ['Avslå', false]]) {
+                    for (const [label, accept] of [['Accept', true], ['Decline', false]]) {
                         const control = button(label, () => work(control, 'friendsFeedback', async () => {
                             await request(api.respondRequest(req.id, accept)); await loadFriends();
-                            feedback('friendsFeedback', accept ? 'Dere er nå venner.' : 'Forespørselen er avslått.');
+                            feedback('friendsFeedback', accept ? 'You are now friends.' : 'Request declined.');
                         }), accept ? '' : 'secondary');
                         actions.appendChild(control);
                     }
                     card.appendChild(actions);
-                } else card.appendChild(text('span', 'Venter på svar', 'hint'));
+                } else card.appendChild(text('span', 'Awaiting response', 'hint'));
                 $(id).appendChild(card);
             });
         }
@@ -171,15 +173,15 @@ export function createApp(client, env = {}) {
         const username = $('friendUsername').value.trim().toLowerCase();
         const person = await request(api.search(username));
         if (read !== searchRead) return;
-        if (!person) { empty('searchResults', 'Fant ingen med dette brukernavnet.'); return; }
+        if (!person) { empty('searchResults', 'No user found with that username.'); return; }
         const card = personCard(person);
-        if (person.id === state.user.id) card.appendChild(text('p', 'Dette er din profil.', 'hint'));
-        else if (state.friends.some(p => p.id === person.id)) card.appendChild(text('p', 'Dere er allerede venner.', 'hint'));
+        if (person.id === state.user.id) card.appendChild(text('p', 'This is your profile.', 'hint'));
+        else if (state.friends.some(p => p.id === person.id)) card.appendChild(text('p', 'You are already friends.', 'hint'));
         else {
-            const send = button('Send venneforespørsel', () => work(send, 'friendsFeedback', async () => {
+            const send = button('Send friend request', () => work(send, 'friendsFeedback', async () => {
                 await request(api.sendRequest(person.username));
                 $('searchResults').replaceChildren(); await loadFriends();
-                feedback('friendsFeedback', 'Venneforespørsel sendt.');
+                feedback('friendsFeedback', 'Friend request sent.');
             }), '');
             card.appendChild(send);
         }
@@ -191,16 +193,34 @@ export function createApp(client, env = {}) {
         feedback('setupFeedback'); go('setup');
         await work($('retryCourses'), 'courseFeedback', loadCourses);
     }
+    function selectedRatings() { return teeSettings(state.course.slope_rating, state.course.course_rating, state.course.par_total); }
     function renderSetup() {
-        $('setupPlayers').replaceChildren(personCard(state.profile), personCard(state.opponent));
+        $('teeSettings').hidden = !state.course;
+        let settings = null;
+        feedback('teePreviewFeedback');
+        if (state.course) {
+            try { settings = selectedRatings(); }
+            catch (error) { feedback('teePreviewFeedback', error.message, true); }
+        }
+        $('teeRatings').textContent = state.course ? `CR: ${state.course.course_rating ?? 'Missing'} · Slope: ${state.course.slope_rating ?? 'Missing'} · Par: ${state.course.par_total ?? 'Missing'}` : '';
+        $('setupPlayers').replaceChildren();
+        for (const person of [state.profile, state.opponent]) {
+            const card = text('div', '', 'person-card');
+            const info = text('div', '');
+            const ch = settings ? courseHandicap(person.handicap, settings) : null;
+            info.append(text('h3', person.display_name), text('p', `Handicap Index: ${person.handicap}`),
+                text('p', `Course Handicap: ${ch ?? (state.course ? 'Course data missing' : 'Not calculated without a course')}`),
+                text('p', `Playing Handicap: ${ch ?? (state.course ? 'Pending' : 0)} · 100 % allowance`));
+            card.appendChild(info); $('setupPlayers').appendChild(card);
+        }
         $('courseConfirm').textContent = state.course
-            ? `${state.course.club_name} · ${state.course.course_name} · Tee ${state.course.tee_name} · ${state.course.holes.length} hull`
-            : '18 hull uten bane eller handicapslag.';
+            ? `${state.course.club_name} · ${state.course.course_name} · Tee ${state.course.tee_name} · ${state.course.holes.length} holes`
+            : '18 holes without a course or handicap strokes.';
     }
     async function loadCourses() {
-        feedback('courseFeedback', 'Henter baner …');
+        feedback('courseFeedback', 'Loading courses …');
         state.courses = await request(api.courses());
-        feedback('courseFeedback', state.courses.length ? '' : 'Ingen baner er registrert. Du kan spille uten bane.');
+        feedback('courseFeedback', state.courses.length ? '' : 'No courses are available. You can play without a course.');
     }
     function searchClub() {
         const query = $('clubInput').value.trim().toLowerCase();
@@ -208,7 +228,7 @@ export function createApp(client, env = {}) {
         $('clubResults').replaceChildren(); $('courseNameTiles').replaceChildren(); $('teeTiles').replaceChildren();
         if (!query) return;
         const clubs = [...new Set(state.courses.map(c => c.club_name))].filter(c => c.toLowerCase().includes(query)).sort();
-        if (!clubs.length) empty('clubResults', 'Ingen klubber funnet.');
+        if (!clubs.length) empty('clubResults', 'No clubs found.');
         for (const club of clubs) $('clubResults').appendChild(button(club, () => {
             $('clubInput').value = club; $('clubResults').replaceChildren(); $('courseNameTiles').replaceChildren();
             const names = [...new Set(state.courses.filter(c => c.club_name === club).map(c => c.course_name))].sort();
@@ -217,8 +237,9 @@ export function createApp(client, env = {}) {
                 for (const el of $('courseNameTiles').querySelectorAll('button')) el.classList.toggle('selected', el === event.currentTarget);
                 for (const tee of state.courses.filter(c => c.club_name === club && c.course_name === name)) {
                     $('teeTiles').appendChild(button(`Tee ${tee.tee_name}`, e => {
-                        if (!Array.isArray(tee.holes) || !tee.holes.length) { feedback('courseFeedback', 'Denne banen mangler hulldata.', true); return; }
-                        state.course = tee; feedback('courseFeedback'); renderSetup();
+                        if (!Array.isArray(tee.holes) || !tee.holes.length) { feedback('courseFeedback', 'This course has no hole data.', true); return; }
+                        state.course = tee;
+                        feedback('courseFeedback'); renderSetup();
                         for (const el of $('teeTiles').querySelectorAll('button')) el.classList.toggle('selected', el === e.currentTarget);
                     }));
                 }
@@ -226,14 +247,15 @@ export function createApp(client, env = {}) {
         }));
     }
     async function startMatch() {
-        if (!state.opponent) throw new Error('Velg en venn først.');
+        if (!state.opponent) throw new Error('Choose a friend first.');
         const courseId = state.course ? String(state.course.id) : null;
+        if (state.course) selectedRatings();
         let attempt = readJournal('start');
         if (!attempt || attempt.opponent !== state.opponent.id || attempt.course !== courseId) {
             attempt = { id: win.crypto.randomUUID(), opponent: state.opponent.id, course: courseId };
             writeJournal('start', attempt);
         }
-        feedback('setupFeedback', 'Oppretter kampen …');
+        feedback('setupFeedback', 'Creating match …');
         const match = await request(api.startMatch(attempt.id, attempt.opponent, attempt.course));
         writeJournal('start', null); state.match = match;
         go(`match/${match.id}`);
@@ -241,34 +263,34 @@ export function createApp(client, env = {}) {
     function renderMatchLists() {
         $('matchList').replaceChildren(); $('profileHistory').replaceChildren();
         const ordered = [...state.matches].sort((a,b) => b.created_at.localeCompare(a.created_at));
-        if (!ordered.length) empty('matchList', 'Ingen kamper ennå. Start en kamp fra vennelisten.');
+        if (!ordered.length) empty('matchList', 'No matches yet. Start one from your friends list.');
         for (const match of ordered) {
             const makeCard = () => {
                 const link = doc.createElement('a'); link.className = 'history-card'; link.href = `#match/${match.id}`;
-                link.append(text('h3', `Mot ${opponentName(match, state.user.id)}`),
-                    text('p', `${outcome(match, state.user.id)} · ${match.final_result || (match.status === 'active' ? statusFor(match, match.player1_id === state.user.id ? 1 : 2) : 'Uten resultat')}`, 'result-label'),
+                link.append(text('h3', `Against ${opponentName(match, state.user.id)}`),
+                    text('p', `${outcome(match, state.user.id)} · ${match.final_result || (match.status === 'active' ? statusFor(match, match.player1_id === state.user.id ? 1 : 2) : 'No result')}`, 'result-label'),
                     text('p', date(match.finished_at || match.created_at), 'hint'));
                 return link;
             };
             $('matchList').appendChild(makeCard());
             if (match.status === 'finished') $('profileHistory').appendChild(makeCard());
         }
-        if (!state.matches.some(m => m.status === 'finished')) empty('profileHistory', 'Ferdigspilte kamper vises her.');
+        if (!state.matches.some(m => m.status === 'finished')) empty('profileHistory', 'Completed matches will appear here.');
         const stats = statistics(state.matches, state.user.id);
         $('profileStats').replaceChildren();
-        for (const [key, label] of [['played','Spilt'],['wins','Seiere'],['losses','Tap'],['draws','Delt']]) {
+        for (const [key, label] of [['played','Played'],['wins','Wins'],['losses','Losses'],['draws','Draws']]) {
             const card = doc.createElement('div'); card.append(text('strong', stats[key]), text('span', label)); $('profileStats').appendChild(card);
         }
     }
     async function loadMatches() {
-        empty('matchList', 'Henter kamper …'); empty('profileHistory', 'Henter historikk …');
+        empty('matchList', 'Loading matches …'); empty('profileHistory', 'Loading history …');
         state.matches = await request(api.matches()); renderMatchLists();
     }
     async function loadMatch(id) {
-        if (!/^[a-f0-9-]{36}$/i.test(id)) throw new Error('Ugyldig kamplenke.');
+        if (!/^[a-f0-9-]{36}$/i.test(id)) throw new Error('Invalid match link.');
         const read = ++matchRead;
         $('scoreForm').hidden = true; $('cancelMatchButton').hidden = true;
-        $('matchResult').hidden = true; $('holeResults').replaceChildren(); $('matchHeading').textContent = 'Henter kamp …';
+        $('matchResult').hidden = true; $('holeResults').replaceChildren(); $('matchHeading').textContent = 'Loading match …';
         const [match, holes] = await request(Promise.all([api.match(id), api.holes(id)]));
         if (read !== matchRead) return;
         state.match = match; state.holes = holes;
@@ -276,27 +298,31 @@ export function createApp(client, env = {}) {
     }
     function renderMatch() {
         const m = state.match, h = state.holes.find(h => h.hole === m.current_hole);
-        $('matchHeading').textContent = m.status === 'active' ? 'Matchplay' : 'Kamp avsluttet';
+        $('matchHeading').textContent = m.status === 'active' ? 'Match play' : 'Match ended';
         $('matchCourse').textContent = m.course_snapshot
-            ? `${m.course_snapshot.club_name} · ${m.course_snapshot.course_name} · Tee ${m.course_snapshot.tee_name}` : '18 hull · Uten handicapslag';
+            ? `${m.course_snapshot.club_name} · ${m.course_snapshot.course_name} · Tee ${m.course_snapshot.tee_name}` : '18 holes · No handicap strokes';
         const played = state.holes.filter(h => h.score1 !== null).length;
         $('roundProgress').max = m.total_holes; $('roundProgress').value = played;
-        $('matchProgress').textContent = `${played} av ${m.total_holes} hull spilt`;
+        $('matchProgress').textContent = `${played} of ${m.total_holes} holes played`;
         $('scoreForm').hidden = m.status !== 'active'; $('cancelMatchButton').hidden = m.status !== 'active';
         $('matchResult').hidden = m.status === 'active';
         if (m.status !== 'active') {
-            $('matchResult').replaceChildren(text('h2', m.status === 'cancelled' ? 'Kampen ble avbrutt' : `${outcome(m, state.user.id)} · ${m.final_result}`),
-                text('p', m.status === 'finished' ? 'Resultatet er lagret for begge spillere.' : 'Kampen teller ikke i statistikken.'));
+            $('matchResult').replaceChildren(text('h2', m.status === 'cancelled' ? 'Match cancelled' : `${outcome(m, state.user.id)} · ${m.final_result}`),
+                text('p', m.status === 'finished' ? 'The result is saved for both players.' : 'This match does not count towards your stats.'));
         }
         if (m.status === 'active' && h) {
-            $('holeTitle').textContent = `Hull ${h.hole}${h.par ? ` · Par ${h.par} · SI ${h.stroke_index}` : ''}`;
+            $('holeTitle').textContent = `Hole ${h.hole}${h.par ? ` · Par ${h.par} · SI ${h.stroke_index}` : ''}`;
             $('scoringPlayers').replaceChildren();
             const pending = readJournal('hole');
             for (const side of [1,2]) {
                 const box = doc.createElement('div'); box.className = 'score-box';
+                if (strokeAdvantage(h).side === side) {
+                    box.classList.add('stroke-advantage');
+                    box.appendChild(text('p', `Receives ${Math.abs(strokeAdvantage(h).difference)} extra ${Math.abs(strokeAdvantage(h).difference) === 1 ? 'stroke' : 'strokes'}`, 'advantage-label'));
+                }
                 const header = doc.createElement('div'); header.className = 'section-heading';
                 header.append(text('h3', m[`player${side}_name`]), text('strong', statusFor(m, side), 'result-label'));
-                const label = text('label', `Antall slag for ${m[`player${side}_name`]}`); label.htmlFor = `score${side}`;
+                const label = text('label', `Score for ${m[`player${side}_name`]}`); label.htmlFor = `score${side}`;
                 const input = doc.createElement('input'); input.id = `score${side}`; input.type = 'number'; input.inputMode = 'numeric';
                 input.min = '1'; input.max = '30'; input.step = '1'; input.required = true;
                 input.value = pending?.match === m.id && pending.hole === h.hole ? pending[`score${side}`] : (h.par || 4);
@@ -305,33 +331,33 @@ export function createApp(client, env = {}) {
                     const control = button(delta === -1 ? '−' : '+', () => {
                         input.value = Math.max(1, Math.min(30, (Number(input.value) || 1) + delta));
                     });
-                    control.setAttribute('aria-label', `${delta < 0 ? 'Ett slag mindre' : 'Ett slag mer'} for ${m[`player${side}_name`]}`);
+                    control.setAttribute('aria-label', `${delta < 0 ? 'One fewer stroke' : 'One more stroke'} for ${m[`player${side}_name`]}`);
                     if (delta === -1) controls.appendChild(control); else controls.append(input, control);
                 }
-                box.append(header, text('p', `HCP ${number(m[`handicap${side}`])} · ${h[`strokes${side}`]} handicapslag på hullet`, 'hint'), label, controls);
+                box.append(header, label, controls);
                 $('scoringPlayers').appendChild(box);
             }
-            if (pending?.match === m.id && pending.hole === h.hole) feedback('scoreFeedback', 'Et scoreutkast er gjenopprettet. Bekreft for å prøve lagringen igjen.');
+            if (pending?.match === m.id && pending.hole === h.hole) feedback('scoreFeedback', 'Your score draft has been restored. Confirm to retry saving.');
             else if (pending?.match === m.id && state.holes.some(row => row.hole === pending.hole && row.score1 !== null)) writeJournal('hole', null);
         }
         $('holeResults').replaceChildren();
         for (const row of state.holes.filter(h => h.score1 !== null)) {
             const card = doc.createElement('article'); card.className = 'hole-card';
-            card.append(text('h3', `Hull ${row.hole}`), text('p', `${m.player1_name}: ${row.score1} · ${m.player2_name}: ${row.score2}`),
-                text('p', row.winner_id ? `${row.winner_id === m.player1_id ? m.player1_name : m.player2_name} vant hullet` : 'Delt hull', 'hint'));
+            card.append(text('h3', `Hole ${row.hole}`), text('p', `${m.player1_name}: ${row.score1} · ${m.player2_name}: ${row.score2}`),
+                text('p', row.winner_id ? `${row.winner_id === m.player1_id ? m.player1_name : m.player2_name} won the hole` : 'Hole tied', 'hint'));
             $('holeResults').appendChild(card);
         }
-        if (!played) empty('holeResults', 'Første hull venter. Registrer score over.');
+        if (!played) empty('holeResults', 'Ready for the first hole. Enter your scores above.');
     }
     async function submitScore() {
         const locationAtSave = win.location.hash;
         const m = state.match;
         if (!m || m.status !== 'active') return;
         const score1 = Number($('score1').value), score2 = Number($('score2').value);
-        if (![score1,score2].every(n => Number.isInteger(n) && n >= 1 && n <= 30)) throw new Error('Velg en score mellom 1 og 30 for begge spillere.');
+        if (![score1,score2].every(n => Number.isInteger(n) && n >= 1 && n <= 30)) throw new Error('Enter a score between 1 and 30 for both players.');
         const pending = { match: m.id, hole: m.current_hole, score1, score2 };
         writeJournal('hole', pending);
-        feedback('scoreFeedback', 'Lagrer hullet …');
+        feedback('scoreFeedback', 'Saving hole …');
         const controls = [...$('scoreForm').querySelectorAll('input'), ...$('scoreForm').querySelectorAll('button'), $('refreshMatch'), $('cancelMatchButton')];
         const disabled = controls.map(control => control.disabled);
         controls.forEach(control => { control.disabled = true; });
@@ -341,7 +367,7 @@ export function createApp(client, env = {}) {
             if (win.location.hash !== locationAtSave) return;
             // Load the committed card instead of trusting optimistic client totals.
             await loadMatch(match.id);
-            feedback('scoreFeedback', match.status === 'finished' ? 'Kampen og resultatet er lagret.' : 'Hullet er lagret.');
+            feedback('scoreFeedback', match.status === 'finished' ? 'Match and result saved.' : 'Hole saved.');
         } finally {
             controls.forEach((control, index) => { control.disabled = disabled[index]; });
         }
@@ -353,13 +379,13 @@ export function createApp(client, env = {}) {
             const result = state.signup ? await request(api.signup(email, password, redirect)) : await request(api.login(email, password));
             $('authPassword').value = '';
             if (result.session) await handleSession(result.session);
-            else feedback('authFeedback', 'Sjekk e-posten din og bekreft kontoen. Deretter kan du logge inn.');
+            else feedback('authFeedback', 'Check your email to confirm your account, then log in.');
         });
         $('authModeButton').addEventListener('click', () => {
             state.signup = !state.signup;
-            $('authTitle').textContent = state.signup ? 'Bli med i klubbhuset.' : 'Klar for en runde?';
-            $('authSubmit').textContent = state.signup ? 'Opprett konto' : 'Logg inn';
-            $('authModeButton').textContent = state.signup ? 'Har du konto? Logg inn' : 'Ny her? Opprett konto';
+            $('authTitle').textContent = state.signup ? 'Join the clubhouse.' : 'Ready for a round?';
+            $('authSubmit').textContent = state.signup ? 'Sign up' : 'Log in';
+            $('authModeButton').textContent = state.signup ? 'Already have an account? Log in' : 'New here? Sign up';
             $('authPassword').autocomplete = state.signup ? 'new-password' : 'current-password';
             $('authPassword').minLength = state.signup ? 8 : 1;
             feedback('authFeedback');
@@ -382,7 +408,7 @@ export function createApp(client, env = {}) {
         });
         form('profileForm', 'profileFeedback', async () => {
             const fields = profileFields(state.profile.username, $('displayName').value, $('handicap').value);
-            state.profile = await request(api.editProfile(state.user.id, fields)); feedback('profileFeedback', 'Profilen er oppdatert.');
+            state.profile = await request(api.editProfile(state.user.id, fields)); feedback('profileFeedback', 'Profile updated.');
         });
         form('friendSearchForm', 'friendsFeedback', searchFriend);
         $('refreshFriends').addEventListener('click', () => work($('refreshFriends'), 'friendsFeedback', loadFriends));
@@ -395,7 +421,7 @@ export function createApp(client, env = {}) {
         $('refreshMatch').addEventListener('click', () => work($('refreshMatch'), 'scoreFeedback', () => loadMatch(win.location.hash.slice(7))));
         form('scoreForm', 'scoreFeedback', submitScore);
         $('cancelMatchButton').addEventListener('click', () => work($('cancelMatchButton'), 'scoreFeedback', async () => {
-            if (!win.confirm('Avslutte kampen uten resultat? Den vil ikke telle i statistikken.')) return;
+            if (!win.confirm('End this match without a result? It will not count towards your stats.')) return;
             await request(api.cancelMatch(state.match.id)); await loadMatch(state.match.id);
         }));
         win.addEventListener('hashchange', () => { route(); $('main').scrollIntoView({ block: 'start' }); });

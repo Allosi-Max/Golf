@@ -61,8 +61,8 @@ test('email login uses Supabase and clears password after success',async()=>{
 });
 test('failed login shows an error and signup handles email confirmation',async()=>{
  const a=await setup({signedOut:true,loginError:true});a.el('authEmail').value='ada@example.test';a.el('authPassword').value='test-only-password';await a.submit('authForm');
- assert.match(a.el('authFeedback').textContent,/Feil e-post/);await a.click('authModeButton');await a.submit('authForm');
- assert.match(a.el('authFeedback').textContent,/bekreft kontoen/);assert.equal(a.app.state.phase,'auth');
+ assert.match(a.el('authFeedback').textContent,/Incorrect email/);await a.click('authModeButton');await a.submit('authForm');
+ assert.match(a.el('authFeedback').textContent,/confirm your account/);assert.equal(a.app.state.phase,'auth');
 });
 test('Google uses Supabase OAuth and correct return URL',async()=>{
  const a=await setup({signedOut:true});await a.click('googleButton');
@@ -79,7 +79,7 @@ test('profile editing only sends display name and handicap',async()=>{
 });
 test('self search has no send button; friends can start setup with both handicaps',async()=>{
  const a=await setup();await a.app.loadFriends();a.el('friendUsername').value='ada';await a.app.searchFriend();
- assert.match(a.el('searchResults').textContent,/din profil/);assert.equal(a.el('searchResults').querySelectorAll('button').length,0);
+ assert.match(a.el('searchResults').textContent,/your profile/);assert.equal(a.el('searchResults').querySelectorAll('button').length,0);
  await a.app.chooseOpponent(profiles[1]);assert.match(a.el('setupPlayers').textContent,/Ada Berg/);assert.match(a.el('setupPlayers').textContent,/19/);assert.equal(a.el('setupView').hidden,false);
 });
 test('incoming requests expose accept/decline and send calls server RPC',async()=>{
@@ -91,7 +91,7 @@ test('incoming requests expose accept/decline and send calls server RPC',async()
 test('start retries keep the same ID; score retries preserve input and do not advance locally',async()=>{
  const a=await setup({rpcError:'Failed to fetch'});await a.app.chooseOpponent(profiles[1]);await a.click('startMatchButton');await a.click('startMatchButton');
  const calls=a.calls.filter(c=>c[1]==='start_match');assert.equal(calls[0][2].p_match_id,calls[1][2].p_match_id);
- assert.match(a.el('setupFeedback').textContent,/forbindelsen/);a.options.rpcError=null;await a.click('startMatchButton');await flush();
+ assert.match(a.el('setupFeedback').textContent,/connection/);a.options.rpcError=null;await a.click('startMatchButton');await flush();
  a.options.rpcError='Failed to fetch';a.el('score1').value='3';a.el('score2').value='5';await a.submit('scoreForm');
  assert.equal(a.app.state.match.current_hole,1);assert.equal(a.el('score1').value,'3');assert.ok(a.storage.has(`golf.accounts.${uuid(1)}.hole`));
  a.options.rpcError=null;await a.submit('scoreForm');assert.equal(a.app.state.match.current_hole,2);assert.equal(a.storage.has(`golf.accounts.${uuid(1)}.hole`),false);
@@ -99,7 +99,7 @@ test('start retries keep the same ID; score retries preserve input and do not ad
 test('server final result renders history and statistics',async()=>{
  const a=await setup({finished:true});a.db.matches=[structuredClone(fixtureMatch)];await a.app.loadMatch(uuid(100));a.el('score1').value='4';a.el('score2').value='5';await a.app.submitScore();
  assert.equal(a.el('scoreForm').hidden,true);assert.match(a.el('matchResult').textContent,/10&8/);await a.app.loadMatches();
- assert.match(a.el('profileHistory').textContent,/Seier/);assert.match(a.el('profileHistory').textContent,/Jon Moen/);assert.match(a.el('profileStats').textContent,/1Spilt/);
+ assert.match(a.el('profileHistory').textContent,/Win/);assert.match(a.el('profileHistory').textContent,/Jon Moen/);assert.match(a.el('profileStats').textContent,/1Played/);
 });
 test('logout clears private state and blocks stale in-flight profile responses',async()=>{
  const a=await setup();await a.app.loadFriends();await a.click('logoutButton');assert.equal(a.app.state.profile,null);assert.equal(a.el('friendList').textContent,'');assert.equal(a.el('appNav').hidden,true);
@@ -109,6 +109,57 @@ test('logout clears private state and blocks stale in-flight profile responses',
 test('profile validation and results distinguish draws and cancelled rounds',async()=>{
  const {profileFields,statistics,statusFor}=await import('../js/match.js');assert.throws(()=>profileFields('ab','Ada','10'));
  assert.throws(()=>profileFields('ada','Ada',''));assert.throws(()=>profileFields('ada','Ada','99'));assert.throws(()=>profileFields('ada','Ada','1.23'));
- assert.equal(profileFields('ADA',' Ada ','0').username,'ada');assert.equal(statusFor({...fixtureMatch,holes_won1:3},2),'3 NED');
+ assert.equal(profileFields('ADA',' Ada ','0').username,'ada');assert.equal(statusFor({...fixtureMatch,holes_won1:3},2),'3 DOWN');
  assert.deepEqual(statistics([{...fixtureMatch,status:'finished',winner_id:null},{...fixtureMatch,status:'cancelled'}],uuid(1)),{played:1,wins:0,losses:0,draws:1});
+});
+
+test('clean scorecard highlights only the player with extra saved strokes',async()=>{
+ const a=await setup();a.db.matches=[{...fixtureMatch}];
+ for(const [one,two,side] of [[1,1,0],[0,1,2],[1,2,2],[2,1,1],[0,0,0]]){
+  a.db.match_holes[0]={...a.db.match_holes[0],par:4,stroke_index:16,strokes1:one,strokes2:two};
+  await a.app.loadMatch(uuid(100));
+  const boxes=a.el('scoringPlayers').children;
+  assert.equal(boxes[0].classList.contains('stroke-advantage'),side===1);
+  assert.equal(boxes[1].classList.contains('stroke-advantage'),side===2);
+  assert.doesNotMatch(a.el('scoringPlayers').textContent,/Handicap|HCP|debug/i);
+  assert.equal(a.el('handicapDebug'),null);
+  assert.equal(a.el('playView').querySelectorAll('table').length,0);
+  assert.match(a.el('holeTitle').textContent,/Hole 1 · Par 4 · SI 16/);
+  if(side)assert.match(boxes[side-1].textContent,/Receives 1 extra stroke/);
+ }
+});
+
+test('English branding and UI contain no old app name or Norwegian interface strings',async()=>{
+ const a=await setup();
+ assert.equal(a.doc.querySelector('html').attributes.lang,'en');
+ assert.match(a.doc.title,/Golf Match/);
+ assert.match(a.doc.querySelector('.brand').textContent,/Golf Match/);
+ const text=a.doc.textContent;
+ assert.doesNotMatch(text,/Golf League|Golf Matchplay|Logg inn|Opprett|Hjem|Venner|Kamper|Lagre|Søk|Handicap debug/);
+});
+
+test('tee selection loads stored ratings and sends only the existing row ID',async()=>{
+ const a=await setup({rpcError:'Failed to fetch'});
+ a.app.state.profile.handicap=12.2;
+ a.db.courses=[{id:1,club_name:'Club',course_name:'Course',tee_name:'48',slope_rating:113,course_rating:75,par_total:72,holes:holes()}];
+ await a.app.chooseOpponent({...profiles[1],handicap:17.2});
+ a.el('clubInput').value='Club';a.el('clubInput').listeners.input();
+ a.el('clubResults').querySelector('button').listeners.click();
+ const course=a.el('courseNameTiles').querySelector('button');course.listeners.click({currentTarget:course});
+ const tee=a.el('teeTiles').querySelector('button');tee.listeners.click({currentTarget:tee});
+ assert.equal(a.el('teeSettings').querySelectorAll('input').length,0);
+ assert.match(a.el('teeRatings').textContent,/CR: 75 · Slope: 113 · Par: 72/);
+ assert.equal(a.el('teeSettings').hidden,false);
+ const cards=a.el('setupPlayers').children;
+ assert.match(cards[0].textContent,/Handicap Index: 12.2/);assert.match(cards[0].textContent,/Course Handicap: 15/);assert.match(cards[0].textContent,/Playing Handicap: 15/);
+ assert.match(cards[1].textContent,/Course Handicap: 20/);assert.match(cards[1].textContent,/Playing Handicap: 20/);
+ await a.click('startMatchButton');await a.click('startMatchButton');
+ let calls=a.calls.filter(c=>c[1]==='start_match');assert.equal(calls.length,2);
+ assert.deepEqual(calls[0][2],{p_match_id:uuid(100),p_opponent_id:uuid(2),p_course_id:'1'});
+ assert.equal(calls[0][2].p_match_id,calls[1][2].p_match_id);
+ a.app.state.course.slope_rating=null;await a.click('startMatchButton');assert.equal(a.calls.filter(c=>c[1]==='start_match').length,2);
+ assert.match(a.el('setupFeedback').textContent,/missing/);
+ a.db.matches=[{...fixtureMatch,handicap1:12.2,handicap2:17.2,course_handicap1:15,course_handicap2:20,playing_handicap1:15,playing_handicap2:20,handicap_allowance:100,course_snapshot:{club_name:'Club',course_name:'Course',tee_name:'48',slope_rating:113,course_rating:75,par:72}}];
+ await a.app.loadMatch(uuid(100));
+ assert.doesNotMatch(a.el('scoringPlayers').textContent,/Course Handicap|Playing Handicap|Handicap Index/);
 });

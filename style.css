@@ -86,3 +86,6 @@ progress::-moz-progress-bar { background:var(--green); border-radius:5px; }
 .skip-link:focus { top:10px; }
 @media(hover:hover) { button:hover,.button:hover { background:var(--dark); color:white; } .secondary:hover,.text-button:hover { background:var(--soft); color:var(--dark); } }
 @media(prefers-reduced-motion:reduce) { *,*::before,*::after { transition:none!important; animation:none!important; } }
+
+.score-box.stroke-advantage { background:#eaf7e9; }
+.advantage-label { color:var(--dark); font-size:13px; font-weight:600; margin-bottom:10px; }

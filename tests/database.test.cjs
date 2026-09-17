@@ -11,10 +11,11 @@ test('migration, scoring and RLS in local PostgreSQL',async t=>{
  create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
  grant usage on schema public,auth to anon,authenticated;grant execute on function auth.uid() to anon,authenticated;
  create table players(id integer primary key,name text,hcp numeric);insert into players values(1,'Legacy',18);
- create table courses(id bigint primary key,club_name text,course_name text,tee_name text,holes jsonb);
+ create table courses(id bigint primary key,club_name text,course_name text,tee_name text,holes jsonb,slope_rating numeric default 113,course_rating numeric default 72,par_total numeric default 72);
  insert into auth.users values('${uuid(1)}'),('${uuid(2)}'),('${uuid(3)}'),('${uuid(4)}');`);
- await db.query('insert into courses values(1,$1,$2,$3,$4)',['Club','Nine','48',JSON.stringify(Array.from({length:9},(_,i)=>({hole:i+1,par:4,stroke_index:i*2+1})))]);
- await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/202609140001_accounts.sql'),'utf8'));
+ await db.query('insert into courses(id,club_name,course_name,tee_name,holes) values(1,$1,$2,$3,$4)',['Club','Nine','48',JSON.stringify(Array.from({length:9},(_,i)=>({hole:i+1,par:4,stroke_index:i*2+1})))]);
+ const migrations=path.join(__dirname,'../supabase/migrations');
+ for(const file of fs.readdirSync(migrations).filter(f=>f.endsWith('.sql')).sort()) await db.exec(fs.readFileSync(path.join(migrations,file),'utf8'));
  const one=async(q,p=[]) =>(await db.query(q,p)).rows[0];
  const as=async(id,role='authenticated')=>{await db.exec(`reset role;set role ${role}`);await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id?uuid(id):'']);};
  const start=id=>one('select * from start_match($1,$2,$3)',[uuid(id),uuid(2),'1']);
@@ -64,7 +65,7 @@ test('migration, scoring and RLS in local PostgreSQL',async t=>{
  });
  await t.test('snapshot handicaps, net ties, duplicate and conflicting scores',async()=>{
   await as(2);await db.query('update profiles set handicap=0 where id=$1',[uuid(2)]);
-  assert.equal((await one('select * from match_holes where match_id=$1 and hole=1',[m.id])).strokes2,1);
+  assert.equal((await one('select * from match_holes where match_id=$1 and hole=1',[m.id])).strokes2,2);
   const after=await one('select * from submit_match_hole($1,1,4,5)',[m.id]);assert.equal(after.holes_won1,0);assert.equal(after.holes_won2,0);
   assert.equal((await one('select * from submit_match_hole($1,1,4,5)',[m.id])).current_hole,2);
   await assert.rejects(()=>one('select * from submit_match_hole($1,1,4,6)',[m.id]),/SCORE_CONFLICT/);
@@ -72,8 +73,10 @@ test('migration, scoring and RLS in local PostgreSQL',async t=>{
   await db.query('update profiles set handicap=19 where id=$1',[uuid(2)]);
  });
  await t.test('3 UP with 2 left ends 3&2 and stores winner/date for both users',async()=>{
+  await as(1);await db.query('update profiles set handicap=0 where id=$1',[uuid(1)]);
+  await as(2);await db.query('update profiles set handicap=0 where id=$1',[uuid(2)]);
   await as(1);const match=await start(101);let r;
-  for(let h=1;h<=7;h++)r=await one('select * from submit_match_hole($1,$2,$3,6)',[match.id,h,h===5||h===6?6:4]);
+  for(let h=1;h<=7;h++)r=await one('select * from submit_match_hole($1,$2,$3,$4)',[match.id,h,h===5||h===6?6:4,h===5||h===6?4:6]);
   assert.equal(r.status,'finished');assert.equal(r.final_result,'3&2');assert.equal(r.winner_id,uuid(1));assert.ok(r.finished_at);
   assert.equal((await one('select * from submit_match_hole($1,7,4,6)',[match.id])).final_result,'3&2');
   await assert.rejects(()=>one('select * from submit_match_hole($1,8,4,6)',[match.id]),/MATCH_FINISHED/);
